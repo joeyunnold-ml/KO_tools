@@ -13,11 +13,14 @@ create table if not exists participants (
   id uuid primary key default gen_random_uuid(),
   session_id uuid references sessions(id) on delete cascade not null,
   name text not null,
-  team text not null check (team in ('monstarlab', 'avis')),
   is_facilitator boolean not null default false,
   connected boolean not null default true,
   joined_at timestamptz not null default now()
 );
+
+-- If you previously ran a version of this schema that included a `team`
+-- column, drop it:
+alter table participants drop column if exists team;
 
 create table if not exists groups (
   id uuid primary key default gen_random_uuid(),
@@ -31,10 +34,15 @@ create table if not exists responses (
   session_id uuid references sessions(id) on delete cascade not null,
   participant_id uuid references participants(id) on delete cascade not null,
   text text not null check (char_length(text) <= 280),
+  summary text,
   group_id uuid references groups(id) on delete set null,
   sort_order integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+-- If you already ran an earlier version of this schema, add the summary
+-- column on existing tables:
+alter table responses add column if not exists summary text;
 
 create table if not exists votes (
   id uuid primary key default gen_random_uuid(),
@@ -70,6 +78,16 @@ alter publication supabase_realtime add table participants;
 alter publication supabase_realtime add table responses;
 alter publication supabase_realtime add table groups;
 alter publication supabase_realtime add table votes;
+
+-- REPLICA IDENTITY FULL on every table so DELETE events emit enough row
+-- data for Supabase Realtime to evaluate session-scoped filters. Without
+-- this, deletes go through in Postgres but never reach subscribed clients
+-- (e.g. "remove one vote" appears to do nothing).
+alter table sessions     replica identity full;
+alter table participants replica identity full;
+alter table groups       replica identity full;
+alter table responses    replica identity full;
+alter table votes        replica identity full;
 
 -- Disable RLS for the initial build. The tool is ephemeral and the data is not
 -- sensitive; the room-code + facilitator-token model is the only access control.

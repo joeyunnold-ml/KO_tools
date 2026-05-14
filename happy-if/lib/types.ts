@@ -1,5 +1,4 @@
 export type Phase = "lobby" | "submit" | "cluster" | "vote" | "complete";
-export type Team = "monstarlab" | "avis";
 
 export interface SessionRow {
   id: string;
@@ -13,7 +12,6 @@ export interface ParticipantRow {
   id: string;
   session_id: string;
   name: string;
-  team: Team;
   is_facilitator: boolean;
   connected: boolean;
   joined_at: string;
@@ -31,6 +29,7 @@ export interface ResponseRow {
   session_id: string;
   participant_id: string;
   text: string;
+  summary: string | null;
   group_id: string | null;
   sort_order: number;
   created_at: string;

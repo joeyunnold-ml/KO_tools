@@ -6,18 +6,13 @@ export function buildMarkdown(state: SessionState): string {
   const participantsById = new Map(participants.map((p) => [p.id, p]));
   const groups = [...state.groups].sort((a, b) => a.sort_order - b.sort_order);
 
-  const voteCounts = new Map<string, { total: number; ml: number; avis: number }>();
-  groups.forEach((g) => voteCounts.set(g.id, { total: 0, ml: 0, avis: 0 }));
+  const voteCounts = new Map<string, number>();
+  groups.forEach((g) => voteCounts.set(g.id, 0));
   for (const v of state.votes) {
-    const tally = voteCounts.get(v.group_id);
-    if (!tally) continue;
-    tally.total += 1;
-    const team = participantsById.get(v.participant_id)?.team;
-    if (team === "monstarlab") tally.ml += 1;
-    if (team === "avis") tally.avis += 1;
+    voteCounts.set(v.group_id, (voteCounts.get(v.group_id) ?? 0) + 1);
   }
 
-  const ranked = [...groups].sort((a, b) => (voteCounts.get(b.id)!.total - voteCounts.get(a.id)!.total));
+  const ranked = [...groups].sort((a, b) => (voteCounts.get(b.id) ?? 0) - (voteCounts.get(a.id) ?? 0));
 
   const dateStr = new Date(state.session.created_at).toLocaleDateString("en-US", {
     year: "numeric", month: "long", day: "numeric",
@@ -28,22 +23,22 @@ export function buildMarkdown(state: SessionState): string {
   lines.push("");
   lines.push(`- Room code: \`${state.session.room_code}\``);
   lines.push(`- Participants: ${participants.length}`);
-  lines.push(`- Names: ${participants.map((p) => `${p.name} (${p.team === "monstarlab" ? "ML" : "Avis"})`).join(", ")}`);
+  lines.push(`- Names: ${participants.map((p) => p.name).join(", ")}`);
   lines.push("");
 
   lines.push("## Priority ranking");
   lines.push("");
   ranked.forEach((g, i) => {
-    const tally = voteCounts.get(g.id)!;
-    lines.push(`${i + 1}. **${g.label}** — ${tally.total} votes (ML: ${tally.ml}, Avis: ${tally.avis})`);
+    const total = voteCounts.get(g.id) ?? 0;
+    lines.push(`${i + 1}. **${g.label}** — ${total} votes`);
   });
   lines.push("");
 
   lines.push("## Responses by cluster");
   lines.push("");
   for (const g of ranked) {
-    const tally = voteCounts.get(g.id)!;
-    lines.push(`### ${g.label} (${tally.total} votes)`);
+    const total = voteCounts.get(g.id) ?? 0;
+    lines.push(`### ${g.label} (${total} votes)`);
     lines.push("");
     const items = state.responses.filter((r) => r.group_id === g.id);
     if (items.length === 0) {

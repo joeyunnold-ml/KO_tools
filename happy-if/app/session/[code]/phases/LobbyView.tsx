@@ -2,6 +2,7 @@
 
 import { QRCodeSVG } from "qrcode.react";
 import type { SessionState } from "@/lib/useSession";
+import { pillColorForParticipant } from "@/lib/palette";
 
 export default function LobbyView({
   state,
@@ -47,16 +48,19 @@ export default function LobbyView({
             👥 {participants.length} of ~12 participants joined
           </p>
         </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-3">
-          {participants.map((p) => (
-            <span key={p.id} className="text-[18px] text-foreground flex items-center gap-2.5">
+        <div className="flex flex-wrap gap-2">
+          {participants.map((p) => {
+            const pill = pillColorForParticipant(p.id);
+            return (
               <span
-                className="inline-block w-3 h-3 rounded-full"
-                style={{ backgroundColor: p.team === "monstarlab" ? "var(--team-monstarlab)" : "var(--team-avis)" }}
-              />
-              {p.name}
-            </span>
-          ))}
+                key={p.id}
+                className="inline-flex items-center px-3 py-1 rounded-full text-[16px] font-medium"
+                style={{ backgroundColor: pill.bg, color: pill.fg }}
+              >
+                {p.name}
+              </span>
+            );
+          })}
         </div>
       </div>
 

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "motion/react";
 import type { SessionState } from "@/lib/useSession";
 import { castVote, removeOneVote } from "@/lib/actions";
+import { paletteFor } from "@/lib/palette";
 
 const TOTAL_VOTES = 3;
 
@@ -53,16 +55,24 @@ export default function ParticipantVote({
         </div>
 
         <ul className="space-y-3">
-          {groups.map((g) => {
+          {groups.map((g, idx) => {
+            const palette = paletteFor(idx);
             const myCount = myCountByGroup.get(g.id) ?? 0;
             return (
-              <li key={g.id} className="rounded-[8px] bg-white border border-border p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-base flex-1 pr-3 text-foreground">{g.label}</h3>
+              <motion.li
+                key={g.id}
+                layout
+                className="rounded-[8px] border-2 p-4"
+                style={{ backgroundColor: palette.bg, borderColor: palette.border }}
+              >
+                <div className="flex items-center justify-between mb-2 gap-3">
+                  <h3 className="font-semibold text-base flex-1" style={{ color: palette.text }}>
+                    {g.label}
+                  </h3>
                   <button
                     onClick={() => addVote(g.id)}
                     disabled={remaining <= 0 || busy}
-                    className="rounded-[4px] bg-deep-blue-800 text-white w-11 h-11 text-sm font-medium hover:bg-deep-blue-600 disabled:opacity-30"
+                    className="rounded-[4px] bg-deep-blue-800 text-white w-11 h-11 text-sm font-medium hover:bg-deep-blue-600 disabled:opacity-30 flex-shrink-0"
                   >
                     +1
                   </button>
@@ -71,7 +81,11 @@ export default function ParticipantVote({
                   <div className="flex items-center gap-3">
                     <div className="flex gap-1">
                       {Array.from({ length: myCount }).map((_, i) => (
-                        <span key={i} className="inline-block w-3 h-3 rounded-full bg-deep-blue-800" />
+                        <span
+                          key={i}
+                          className="inline-block w-3 h-3 rounded-full"
+                          style={{ backgroundColor: palette.text }}
+                        />
                       ))}
                     </div>
                     <button
@@ -79,11 +93,11 @@ export default function ParticipantVote({
                       disabled={busy}
                       className="text-xs text-grey-700 hover:text-[var(--error-fg)] underline"
                     >
-                      ➖ remove one
+                      ➖ remove vote
                     </button>
                   </div>
                 ) : null}
-              </li>
+              </motion.li>
             );
           })}
         </ul>

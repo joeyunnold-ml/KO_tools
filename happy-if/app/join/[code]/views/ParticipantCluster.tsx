@@ -1,6 +1,9 @@
 "use client";
 
+import { motion, AnimatePresence } from "motion/react";
 import type { SessionState } from "@/lib/useSession";
+import { paletteFor } from "@/lib/palette";
+import ResponsePill from "@/components/ResponsePill";
 
 export default function ParticipantCluster({
   state,
@@ -20,38 +23,87 @@ export default function ParticipantCluster({
         <h1 className="text-[22px] font-medium mb-1 text-foreground">🗂️ Grouping responses</h1>
         <p className="text-sm text-grey-700 mb-6">👀 Follow along with the facilitator.</p>
 
-        {groups.map((g) => {
-          const items = state.responses.filter((r) => r.group_id === g.id);
-          return (
-            <section key={g.id} className="mb-5">
-              <h2 className="text-[18px] font-semibold text-foreground mb-2">
-                {g.label} <span className="text-grey-600 font-normal">({items.length})</span>
-              </h2>
-              <ul className="space-y-2">
-                {items.map((r) => (
-                  <li key={r.id} className="rounded-[8px] bg-white border border-border p-3 text-sm text-foreground">
-                    &ldquo;{r.text}&rdquo;
-                    <div className="mt-1 text-xs text-grey-700">— {participantsById.get(r.participant_id)?.name ?? "—"}</div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })}
+        <AnimatePresence mode="popLayout">
+          {groups.map((g, idx) => {
+            const palette = paletteFor(idx);
+            const items = state.responses.filter((r) => r.group_id === g.id);
+            return (
+              <motion.section
+                key={g.id}
+                layout
+                layoutId={`p-group-${g.id}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ type: "spring", stiffness: 240, damping: 22 }}
+                className="mb-4 rounded-[8px] border-2 p-4"
+                style={{ backgroundColor: palette.bg, borderColor: palette.border }}
+              >
+                <h2 className="text-[16px] font-semibold mb-3" style={{ color: palette.text }}>
+                  {g.label}{" "}
+                  <span className="opacity-50 font-normal">({items.length})</span>
+                </h2>
+                <div className="space-y-2">
+                  <AnimatePresence mode="popLayout">
+                    {items.map((r) => {
+                      const p = participantsById.get(r.participant_id);
+                      return (
+                        <motion.div
+                          key={r.id}
+                          layout
+                          layoutId={`p-response-${r.id}`}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                        >
+                          <ResponsePill
+                            response={r}
+                            participantName={p?.name ?? "—"}
+                            participantId={r.participant_id}
+                            palette={palette}
+                            compact
+                          />
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+              </motion.section>
+            );
+          })}
+        </AnimatePresence>
 
         {unclustered.length > 0 ? (
-          <section>
+          <section className="mt-2">
             <h2 className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
               📋 Unclustered ({unclustered.length})
             </h2>
-            <ul className="space-y-2">
-              {unclustered.map((r) => (
-                <li key={r.id} className="rounded-[8px] bg-grey-200 border border-border p-3 text-sm text-foreground">
-                  &ldquo;{r.text}&rdquo;
-                  <div className="mt-1 text-xs text-grey-700">— {participantsById.get(r.participant_id)?.name ?? "—"}</div>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-2">
+              <AnimatePresence mode="popLayout">
+                {unclustered.map((r) => {
+                  const p = participantsById.get(r.participant_id);
+                  return (
+                    <motion.div
+                      key={r.id}
+                      layout
+                      layoutId={`p-response-${r.id}`}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                    >
+                      <ResponsePill
+                        response={r}
+                        participantName={p?.name ?? "—"}
+                        participantId={r.participant_id}
+                        compact
+                      />
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
           </section>
         ) : null}
       </div>

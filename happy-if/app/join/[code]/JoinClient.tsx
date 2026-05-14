@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "@/lib/useSession";
 import { getParticipantId, saveParticipantId } from "@/lib/storage";
 import { joinSession } from "@/lib/actions";
-import type { ParticipantRow, Team } from "@/lib/types";
+import type { ParticipantRow } from "@/lib/types";
 import ParticipantLobby from "./views/ParticipantLobby";
 import ParticipantSubmit from "./views/ParticipantSubmit";
 import ParticipantCluster from "./views/ParticipantCluster";
@@ -15,7 +15,6 @@ export default function JoinClient({ roomCode }: { roomCode: string }) {
   const state = useSession(roomCode);
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [team, setTeam] = useState<Team | null>(null);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,14 +62,13 @@ export default function JoinClient({ roomCode }: { roomCode: string }) {
           onSubmit={async (e) => {
             e.preventDefault();
             const n = name.trim();
-            if (!n || !team || !state.session) return;
+            if (!n || !state.session) return;
             setJoining(true);
             setError(null);
             try {
               const row: ParticipantRow = await joinSession({
                 sessionId: state.session.id,
                 name: n,
-                team,
               });
               saveParticipantId(state.session.id, row.id);
               setParticipantId(row.id);
@@ -97,38 +95,9 @@ export default function JoinClient({ roomCode }: { roomCode: string }) {
             />
           </div>
 
-          <div>
-            <label className="block text-[13px] font-medium mb-2 text-foreground">🏷️ Your team</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setTeam("monstarlab")}
-                className={`h-[44px] rounded-[4px] border text-sm font-medium transition-colors ${
-                  team === "monstarlab"
-                    ? "border-foreground bg-yellow-500 text-foreground"
-                    : "border-border bg-white text-grey-800"
-                }`}
-              >
-                🟡 Monstarlab
-              </button>
-              <button
-                type="button"
-                onClick={() => setTeam("avis")}
-                className={`h-[44px] rounded-[4px] border text-sm font-medium transition-colors ${
-                  team === "avis"
-                    ? "border-foreground text-white"
-                    : "border-border bg-white text-grey-800"
-                }`}
-                style={team === "avis" ? { backgroundColor: "var(--team-avis)" } : undefined}
-              >
-                🔴 Avis
-              </button>
-            </div>
-          </div>
-
           <button
             type="submit"
-            disabled={!name.trim() || !team || joining}
+            disabled={!name.trim() || joining}
             className="w-full h-[44px] rounded-[4px] bg-deep-blue-800 text-white text-sm font-medium hover:bg-deep-blue-600 disabled:opacity-40"
           >
             {joining ? "⏳ Joining…" : "👋 Join →"}

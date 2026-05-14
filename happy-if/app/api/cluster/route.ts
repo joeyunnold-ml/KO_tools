@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { ParticipantRow, ResponseRow, SessionRow } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // give the LLM call up to 60s
+export const maxDuration = 60;
 
 function admin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -12,20 +12,29 @@ function admin() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 interface ClusterRequest {
   sessionId: string;
   facilitatorToken: string;
   force?: boolean;
 }
 
+interface LLMItem {
+  index: number;
+  summary: string;
+}
+
 interface LLMCluster {
   label: string;
-  indices: number[];
+  items: LLMItem[];
 }
 
 interface LLMResponse {
   groups: LLMCluster[];
-  unclustered?: number[];
+  unclustered?: LLMItem[];
 }
 
 export async function POST(req: Request) {
@@ -99,11 +108,12 @@ Participant responses (the bracketed numbers are stable IDs you must reference):
 
 ${lines.join("\n")}
 
-Your task: group these responses into 3-6 themed clusters.
+Your task: group these responses into 3-6 themed clusters AND give each response a short summary chip.
 
 Rules:
 - Each cluster gets a short, descriptive label (2-5 words, Title Case)
 - Use neutral, professional language (e.g., "Conversion Recovery", "Team Velocity", "Process Clarity")
+- Each response gets an "abbreviated label" — a 2-6 word punchy summary capturing the essence of that specific response (Title Case or sentence case, no quotes)
 - Group thematically similar responses together
 - Use "unclustered" sparingly — only for responses that genuinely don't fit anywhere
 - Every response index must appear exactly once across "groups" and "unclustered"
@@ -113,10 +123,17 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
 
 {
   "groups": [
-    {"label": "Conversion Recovery", "indices": [1, 4, 7]},
-    {"label": "Process Clarity", "indices": [2, 5]}
+    {
+      "label": "Conversion Recovery",
+      "items": [
+        {"index": 1, "summary": "Back to pre-replatform baseline"},
+        {"index": 4, "summary": "$500K incremental revenue"}
+      ]
+    }
   ],
-  "unclustered": [3]
+  "unclustered": [
+    {"index": 7, "summary": "Better team coffee"}
+  ]
 }`;
 
   // 5. Call OpenRouter
@@ -159,7 +176,7 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
     );
   }
 
-  // 6. Parse JSON (strip code fences if present)
+  // 6. Parse JSON
   let parsed: LLMResponse;
   try {
     const cleaned = llmResponseText
@@ -180,16 +197,18 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
     return NextResponse.json({ error: "LLM response missing 'groups' array" }, { status: 502 });
   }
 
-  // 7. Write to database
-  // If force=true, clear existing groups first
+  // 7. Clear existing if force
   if (force && existingGroups && existingGroups.length > 0) {
     await sb.from("groups").delete().eq("session_id", sessionId);
     await sb.from("responses").update({ group_id: null }).eq("session_id", sessionId);
   }
 
+  // 8. Write to DB — STAGGERED so Realtime events feel like a stream
+  // Group inserts first (quick), then animate responses arriving one by one
+  const groupRows: Array<{ id: string; items: LLMItem[] }> = [];
   for (let i = 0; i < parsed.groups.length; i++) {
     const g = parsed.groups[i];
-    if (!g.label || !Array.isArray(g.indices)) continue;
+    if (!g.label || !Array.isArray(g.items)) continue;
 
     const { data: groupInsert } = await sb
       .from("groups")
@@ -198,16 +217,41 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
       .single();
     if (!groupInsert) continue;
     const groupRow = groupInsert as { id: string };
+    groupRows.push({ id: groupRow.id, items: g.items });
 
-    const responseIds = g.indices
-      .map((idx) => responses[idx - 1]?.id)
-      .filter((id): id is string => typeof id === "string");
-    if (responseIds.length > 0) {
-      await sb
-        .from("responses")
-        .update({ group_id: groupRow.id })
-        .in("id", responseIds);
+    // Small pause between group inserts so the column skeletons stagger
+    await delay(250 + Math.floor(Math.random() * 200));
+  }
+
+  // 9. Now assign responses one at a time with random delays — the show
+  // We interleave across groups so multiple columns fill in parallel.
+  const queue: Array<{ groupId: string; item: LLMItem }> = [];
+  const maxItems = Math.max(...groupRows.map((g) => g.items.length), 0);
+  for (let i = 0; i < maxItems; i++) {
+    for (const gr of groupRows) {
+      const item = gr.items[i];
+      if (item) queue.push({ groupId: gr.id, item });
     }
+  }
+
+  for (const { groupId, item } of queue) {
+    const responseId = responses[item.index - 1]?.id;
+    if (!responseId) continue;
+    await sb
+      .from("responses")
+      .update({ group_id: groupId, summary: item.summary ?? null })
+      .eq("id", responseId);
+    await delay(180 + Math.floor(Math.random() * 280)); // 180-460ms per card
+  }
+
+  // 10. Handle unclustered summaries (no group_id change, just summary)
+  for (const item of parsed.unclustered ?? []) {
+    const responseId = responses[item.index - 1]?.id;
+    if (!responseId) continue;
+    await sb
+      .from("responses")
+      .update({ summary: item.summary ?? null })
+      .eq("id", responseId);
   }
 
   return NextResponse.json({ ok: true, group_count: parsed.groups.length });

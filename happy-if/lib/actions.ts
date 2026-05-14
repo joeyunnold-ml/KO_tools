@@ -1,13 +1,13 @@
 "use client";
 
 import { getSupabase } from "./supabase";
-import type { Phase, Team } from "./types";
+import type { Phase } from "./types";
 
-export async function joinSession(opts: { sessionId: string; name: string; team: Team }) {
+export async function joinSession(opts: { sessionId: string; name: string }) {
   const sb = getSupabase();
   const { data, error } = await sb
     .from("participants")
-    .insert({ session_id: opts.sessionId, name: opts.name, team: opts.team })
+    .insert({ session_id: opts.sessionId, name: opts.name })
     .select()
     .single();
   if (error) throw error;

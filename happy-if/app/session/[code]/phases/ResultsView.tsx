@@ -1,33 +1,35 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import type { SessionState } from "@/lib/useSession";
 import { downloadMarkdown } from "@/lib/exportMarkdown";
+import { paletteFor } from "@/lib/palette";
 import { VoteDots } from "./VoteView";
+import ResponsePill from "@/components/ResponsePill";
 
 export default function ResultsView({ state }: { state: SessionState }) {
   const groups = state.groups;
   const participantsById = useMemo(() => {
-    const m = new Map<string, { team: "monstarlab" | "avis" }>();
-    state.participants.forEach((p) => m.set(p.id, { team: p.team }));
+    const m = new Map(state.participants.map((p) => [p.id, p]));
     return m;
   }, [state.participants]);
 
   const ranked = useMemo(() => {
-    return groups
+    return [...groups]
       .map((g) => {
-        const votes = state.votes.filter((v) => v.group_id === g.id);
-        const ml = votes.filter((v) => participantsById.get(v.participant_id)?.team === "monstarlab").length;
-        const avis = votes.filter((v) => participantsById.get(v.participant_id)?.team === "avis").length;
-        return { group: g, total: votes.length, ml, avis };
+        const total = state.votes.filter((v) => v.group_id === g.id).length;
+        return { group: g, total, originalIndex: g.sort_order };
       })
       .sort((a, b) => b.total - a.total);
-  }, [groups, state.votes, participantsById]);
+  }, [groups, state.votes]);
 
   return (
-    <div className="flex-1 flex flex-col p-12 bg-white">
+    <div className="flex-1 flex flex-col p-8 lg:p-10 bg-white">
       <div className="flex items-baseline justify-between mb-8">
-        <h1 className="text-[28px] font-medium text-foreground">🏆 Priorities <span className="text-grey-600 text-base font-normal">(ranked by votes)</span></h1>
+        <h1 className="text-[28px] font-medium text-foreground">
+          🏆 Priorities <span className="text-grey-600 text-base font-normal">(ranked by votes)</span>
+        </h1>
         <button
           onClick={() => downloadMarkdown(state)}
           className="h-[44px] rounded-[4px] bg-yellow-500 text-foreground px-6 text-sm font-medium hover:bg-yellow-600"
@@ -37,42 +39,98 @@ export default function ResultsView({ state }: { state: SessionState }) {
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto">
-        {ranked.map((r, i) => (
-          <div key={r.group.id} className="rounded-[8px] bg-white border border-border p-6">
-            <div className="flex items-baseline gap-4 mb-3">
-              <span className="text-[28px] font-bold tabular-nums text-grey-500 w-14">
-                {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
-              </span>
-              <h2 className="text-[22px] font-medium flex-1 text-foreground">{r.group.label}</h2>
-              <span className="text-[28px] font-bold tabular-nums text-foreground">{r.total}</span>
-            </div>
-            <div className="pl-14">
-              <VoteDots count={r.total} />
-              <div className="mt-2 flex gap-4 text-xs text-grey-800">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: "var(--team-monstarlab)" }} />
-                  ML: <span className="font-medium text-foreground">{r.ml}</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: "var(--team-avis)" }} />
-                  Avis: <span className="font-medium text-foreground">{r.avis}</span>
-                </span>
-              </div>
-              <details className="mt-3">
-                <summary className="text-xs text-grey-700 cursor-pointer hover:text-foreground">📄 View {state.responses.filter((rsp) => rsp.group_id === r.group.id).length} responses</summary>
-                <ul className="mt-2 space-y-1 text-sm text-foreground">
-                  {state.responses.filter((rsp) => rsp.group_id === r.group.id).map((rsp) => {
-                    const author = state.participants.find((p) => p.id === rsp.participant_id);
-                    return (
-                      <li key={rsp.id}>&ldquo;{rsp.text}&rdquo; — <span className="text-grey-700">{author?.name ?? "—"}</span></li>
-                    );
-                  })}
-                </ul>
-              </details>
-            </div>
-          </div>
-        ))}
+        {ranked.map((r, i) => {
+          const palette = paletteFor(r.originalIndex);
+          const responses = state.responses.filter((rsp) => rsp.group_id === r.group.id);
+          return (
+            <ResultRow
+              key={r.group.id}
+              rank={i}
+              label={r.group.label}
+              total={r.total}
+              palette={palette}
+              responses={responses}
+              participantsById={participantsById}
+            />
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+function ResultRow({
+  rank,
+  label,
+  total,
+  palette,
+  responses,
+  participantsById,
+}: {
+  rank: number;
+  label: string;
+  total: number;
+  palette: ReturnType<typeof paletteFor>;
+  responses: ReturnType<SessionState["responses"]["filter"]>;
+  participantsById: Map<string, { name: string }>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const medal = rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : `${rank + 1}.`;
+
+  return (
+    <motion.div
+      layout
+      className="rounded-[8px] border-2 p-6"
+      style={{ backgroundColor: palette.bg, borderColor: palette.border }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full text-left"
+      >
+        <div className="flex items-baseline gap-4 mb-3">
+          <span className="text-[28px] font-bold tabular-nums w-14" style={{ color: palette.text }}>
+            {medal}
+          </span>
+          <h2 className="text-[22px] font-medium flex-1" style={{ color: palette.text }}>
+            {label}
+          </h2>
+          <span className="text-[28px] font-bold tabular-nums" style={{ color: palette.text }}>
+            {total}
+          </span>
+          <span className="text-grey-500 text-xs">{expanded ? "▾" : "▸"}</span>
+        </div>
+      </button>
+      <div className="pl-14">
+        <VoteDots count={total} color={palette.text} />
+        <AnimatePresence initial={false}>
+          {expanded ? (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3 space-y-2">
+                {responses.map((r) => {
+                  const p = participantsById.get(r.participant_id);
+                  return (
+                    <ResponsePill
+                      key={r.id}
+                      response={r}
+                      participantName={p?.name ?? "—"}
+                      participantId={r.participant_id}
+                      palette={palette}
+                      compact
+                    />
+                  );
+                })}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </motion.div>
   );
 }
