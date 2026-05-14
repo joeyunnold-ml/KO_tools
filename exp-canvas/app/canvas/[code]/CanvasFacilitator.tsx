@@ -2,8 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useCanvas } from "@/lib/useCanvas";
-import { getFacilitatorToken, getFacilitatorParticipantId } from "@/lib/storage";
-import { advancePhase, runSynthesis, seedDefaultStructure, seedStructure } from "@/lib/actions";
+import {
+  getFacilitatorToken,
+  getFacilitatorParticipantId,
+  saveFacilitatorParticipantId,
+} from "@/lib/storage";
+import {
+  advancePhase,
+  ensureFacilitatorParticipant,
+  runSynthesis,
+  seedDefaultStructure,
+  seedStructure,
+} from "@/lib/actions";
 import type { Phase } from "@/lib/types";
 import LobbyView from "./phases/LobbyView";
 import ElicitView from "./phases/ElicitView";
@@ -25,6 +35,25 @@ export default function CanvasFacilitator({ roomCode }: { roomCode: string }) {
       setFacilitatorParticipantId(getFacilitatorParticipantId(state.canvas.id));
     }
   }, [state.canvas]);
+
+  // Self-heal: if we hold the facilitator token but don't have a cached
+  // facilitator_participant_id (older canvases, fresh browser, etc),
+  // look up or create one and cache it.
+  useEffect(() => {
+    if (!state.canvas || !token || facilitatorParticipantId) return;
+    const canvasId = state.canvas.id;
+    let cancelled = false;
+    ensureFacilitatorParticipant(canvasId)
+      .then((id) => {
+        if (cancelled) return;
+        saveFacilitatorParticipantId(canvasId, id);
+        setFacilitatorParticipantId(id);
+      })
+      .catch((e) => console.error("ensureFacilitatorParticipant failed", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [state.canvas, token, facilitatorParticipantId]);
 
   if (state.loading) {
     return (

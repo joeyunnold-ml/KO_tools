@@ -18,6 +18,29 @@ export async function joinCanvas(opts: { canvasId: string; name: string }) {
   return data;
 }
 
+// Look up or create the per-canvas "Facilitator" pseudo-participant so the
+// facilitator can attribute stickies they add directly from the projector.
+// Self-heals canvases created before this row was auto-provisioned.
+export async function ensureFacilitatorParticipant(canvasId: string): Promise<string> {
+  const sb = getSupabase();
+  const { data: existing } = await sb
+    .from("canvas_participants")
+    .select("id")
+    .eq("canvas_id", canvasId)
+    .eq("is_facilitator", true)
+    .limit(1);
+  const existingRow = (existing as Array<{ id: string }> | null)?.[0];
+  if (existingRow) return existingRow.id;
+
+  const { data: inserted, error } = await sb
+    .from("canvas_participants")
+    .insert({ canvas_id: canvasId, name: "Facilitator", is_facilitator: true })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return (inserted as { id: string }).id;
+}
+
 // ---------------------------------------------------------------------------
 // Phase transitions (facilitator-only)
 // ---------------------------------------------------------------------------
