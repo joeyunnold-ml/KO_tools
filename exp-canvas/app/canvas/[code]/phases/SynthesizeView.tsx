@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { CanvasState } from "@/lib/useCanvas";
 import { pillColorForParticipant } from "@/lib/palette";
@@ -60,14 +60,22 @@ export default function SynthesizeView({
               className="absolute inset-0 overflow-y-auto pr-2"
             >
               {synthesis ? (
-                <div className="space-y-5 max-w-4xl">
-                  <div className="flex flex-wrap gap-2">
+                <div className="space-y-5">
+                  {/* Single-row stage flow with arrow connectors. Scrolls
+                      horizontally if it overflows the screen rather than
+                      wrapping to multiple lines. */}
+                  <div className="flex items-center gap-3 overflow-x-auto pb-3 -mx-2 px-2">
                     {synthesis.stages.map((s, i) => (
-                      <ProposedStage key={i} stage={s} />
+                      <Fragment key={i}>
+                        <ProposedStage stage={s} />
+                        {i < synthesis.stages.length - 1 ? (
+                          <StageArrow />
+                        ) : null}
+                      </Fragment>
                     ))}
                   </div>
 
-                  <div className="rounded-[8px] bg-grey-100 border border-border p-4">
+                  <div className="rounded-[8px] bg-grey-100 border border-border p-4 max-w-5xl">
                     <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
                       📝 Narrative
                     </p>
@@ -77,7 +85,7 @@ export default function SynthesizeView({
                   </div>
 
                   {synthesis.divergences && synthesis.divergences.length > 0 ? (
-                    <div className="rounded-[8px] bg-white border border-border p-4">
+                    <div className="rounded-[8px] bg-white border border-border p-4 max-w-5xl">
                       <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
                         ⚠️ Divergences
                       </p>
@@ -104,7 +112,7 @@ export default function SynthesizeView({
               transition={{ duration: 0.18, ease: "easeOut" }}
               className="absolute inset-0 overflow-y-auto pr-2"
             >
-              <div className="space-y-3 max-w-4xl">
+              <div className="space-y-3">
                 {state.submissions.map((sub, i) => {
                   const p = participantsById.get(sub.participant_id);
                   const pill = p ? pillColorForParticipant(p.id) : null;
@@ -195,15 +203,39 @@ function TabButton({
 
 function StageChain({ stages }: { stages: string[] }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+    <div className="flex items-center gap-1.5 text-[13px] overflow-x-auto pb-1 -mx-1 px-1">
       {stages.map((s, i) => (
-        <span key={i} className="flex items-center gap-1.5">
-          <span className="inline-block px-2 py-1 rounded-[4px] bg-grey-100 border border-grey-200 text-foreground">
+        <span key={i} className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="inline-block px-2 py-1 rounded-[4px] bg-grey-100 border border-grey-200 text-foreground whitespace-nowrap">
             {s}
           </span>
           {i < stages.length - 1 ? <span className="text-grey-500">→</span> : null}
         </span>
       ))}
+    </div>
+  );
+}
+
+function StageArrow() {
+  return (
+    <div className="flex-shrink-0 flex items-center" aria-hidden>
+      <svg
+        width="32"
+        height="14"
+        viewBox="0 0 32 14"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <line x1="0" y1="7" x2="26" y2="7" stroke="#939598" strokeWidth="2" strokeLinecap="round" />
+        <polyline
+          points="22,2 30,7 22,12"
+          fill="none"
+          stroke="#939598"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </div>
   );
 }
@@ -221,7 +253,7 @@ function ProposedStage({
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 320, damping: 22 }}
-      className="rounded-[6px] border-2 px-3 py-2"
+      className="rounded-[6px] border-2 px-3 py-2 flex-shrink-0 whitespace-nowrap"
       style={{ backgroundColor: bg, borderColor: border }}
     >
       <p className="text-[14px] font-semibold text-foreground">{stage.label}</p>
