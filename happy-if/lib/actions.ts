@@ -1,0 +1,109 @@
+"use client";
+
+import { getSupabase } from "./supabase";
+import type { Phase, Team } from "./types";
+
+export async function joinSession(opts: { sessionId: string; name: string; team: Team }) {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("participants")
+    .insert({ session_id: opts.sessionId, name: opts.name, team: opts.team })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function advancePhase(opts: { sessionId: string; facilitatorToken: string; to: Phase }) {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("sessions")
+    .update({ phase: opts.to })
+    .eq("id", opts.sessionId)
+    .eq("facilitator_token", opts.facilitatorToken)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function submitResponse(opts: { sessionId: string; participantId: string; text: string }) {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("responses")
+    .insert({ session_id: opts.sessionId, participant_id: opts.participantId, text: opts.text.slice(0, 280) })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateResponse(opts: { id: string; text: string }) {
+  const sb = getSupabase();
+  const { error } = await sb.from("responses").update({ text: opts.text.slice(0, 280) }).eq("id", opts.id);
+  if (error) throw error;
+}
+
+export async function deleteResponse(id: string) {
+  const sb = getSupabase();
+  const { error } = await sb.from("responses").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function createGroup(opts: { sessionId: string; label: string; sortOrder: number }) {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("groups")
+    .insert({ session_id: opts.sessionId, label: opts.label, sort_order: opts.sortOrder })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function renameGroup(opts: { id: string; label: string }) {
+  const sb = getSupabase();
+  const { error } = await sb.from("groups").update({ label: opts.label }).eq("id", opts.id);
+  if (error) throw error;
+}
+
+export async function deleteGroup(id: string) {
+  const sb = getSupabase();
+  // Responses fk is "on delete set null" so they'll fall back to Unclustered
+  const { error } = await sb.from("groups").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function moveResponseToGroup(opts: { responseId: string; groupId: string | null }) {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("responses")
+    .update({ group_id: opts.groupId })
+    .eq("id", opts.responseId);
+  if (error) throw error;
+}
+
+export async function castVote(opts: { sessionId: string; participantId: string; groupId: string }) {
+  const sb = getSupabase();
+  const { error } = await sb.from("votes").insert({
+    session_id: opts.sessionId,
+    participant_id: opts.participantId,
+    group_id: opts.groupId,
+  });
+  if (error) throw error;
+}
+
+export async function removeOneVote(opts: { participantId: string; groupId: string }) {
+  const sb = getSupabase();
+  // Find one vote row matching, delete by id
+  const { data, error } = await sb
+    .from("votes")
+    .select("id")
+    .eq("participant_id", opts.participantId)
+    .eq("group_id", opts.groupId)
+    .limit(1);
+  if (error) throw error;
+  if (!data?.length) return;
+  const { error: delErr } = await sb.from("votes").delete().eq("id", data[0].id);
+  if (delErr) throw delErr;
+}
