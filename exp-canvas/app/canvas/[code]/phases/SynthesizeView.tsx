@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { CanvasState } from "@/lib/useCanvas";
 import { pillColorForParticipant } from "@/lib/palette";
+
+type Tab = "synthesized" | "individual";
 
 export default function SynthesizeView({
   state,
@@ -15,9 +18,12 @@ export default function SynthesizeView({
   onStartFromScratch: () => void;
   busy: boolean;
 }) {
+  const [tab, setTab] = useState<Tab>("synthesized");
+
   if (!state.canvas) return null;
   const synthesis = state.canvas.synthesis_result;
   const participantsById = new Map(state.participants.map((p) => [p.id, p]));
+  const submissionCount = state.submissions.length;
 
   return (
     <div className="flex-1 flex flex-col p-8 lg:p-10 bg-white">
@@ -30,83 +36,105 @@ export default function SynthesizeView({
         </h1>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-0 overflow-hidden">
-        {/* LEFT: individual submissions */}
-        <div className="flex flex-col min-h-0">
-          <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-3">
-            👥 Individual submissions
-          </p>
-          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-            <AnimatePresence>
-              {state.submissions.map((sub, i) => {
-                const p = participantsById.get(sub.participant_id);
-                const pill = p ? pillColorForParticipant(p.id) : null;
-                return (
-                  <motion.div
-                    key={sub.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                    className="rounded-[8px] bg-white border border-border p-3"
-                  >
-                    {pill ? (
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium mb-2"
-                        style={{ backgroundColor: pill.bg, color: pill.fg }}
-                      >
-                        {p?.name}
-                      </span>
-                    ) : null}
-                    <StageChain stages={sub.stages} />
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        </div>
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 mb-5 border-b border-border">
+        <TabButton active={tab === "synthesized"} onClick={() => setTab("synthesized")}>
+          🤖 Synthesized
+        </TabButton>
+        <TabButton active={tab === "individual"} onClick={() => setTab("individual")}>
+          👥 Individual submissions
+          <span className="ml-1.5 text-grey-600 font-normal">({submissionCount})</span>
+        </TabButton>
+      </div>
 
-        {/* RIGHT: AI proposal */}
-        <div className="flex flex-col min-h-0">
-          <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-3">
-            🤖 Synthesized lifecycle
-          </p>
-          {synthesis ? (
-            <div className="flex-1 overflow-y-auto pr-2 space-y-5">
-              {/* Proposed stages as a chain */}
-              <div className="flex flex-wrap gap-2">
-                {synthesis.stages.map((s, i) => (
-                  <ProposedStage key={i} stage={s} />
-                ))}
-              </div>
-
-              {/* Narrative */}
-              <div className="rounded-[8px] bg-grey-100 border border-border p-4">
-                <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
-                  📝 Narrative
-                </p>
-                <p className="text-[15px] leading-relaxed text-foreground">{synthesis.narrative}</p>
-              </div>
-
-              {/* Divergences */}
-              {synthesis.divergences && synthesis.divergences.length > 0 ? (
-                <div className="rounded-[8px] bg-white border border-border p-4">
-                  <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
-                    ⚠️ Divergences
-                  </p>
-                  <ul className="space-y-1 text-[14px] text-grey-800 list-disc list-inside">
-                    {synthesis.divergences.map((d, i) => (
-                      <li key={i}>{d.description}</li>
+      {/* Tab content */}
+      <div className="flex-1 min-h-0 overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          {tab === "synthesized" ? (
+            <motion.div
+              key="synthesized"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="absolute inset-0 overflow-y-auto pr-2"
+            >
+              {synthesis ? (
+                <div className="space-y-5 max-w-4xl">
+                  <div className="flex flex-wrap gap-2">
+                    {synthesis.stages.map((s, i) => (
+                      <ProposedStage key={i} stage={s} />
                     ))}
-                  </ul>
+                  </div>
+
+                  <div className="rounded-[8px] bg-grey-100 border border-border p-4">
+                    <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
+                      📝 Narrative
+                    </p>
+                    <p className="text-[15px] leading-relaxed text-foreground">
+                      {synthesis.narrative}
+                    </p>
+                  </div>
+
+                  {synthesis.divergences && synthesis.divergences.length > 0 ? (
+                    <div className="rounded-[8px] bg-white border border-border p-4">
+                      <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
+                        ⚠️ Divergences
+                      </p>
+                      <ul className="space-y-1 text-[14px] text-grey-800 list-disc list-inside">
+                        {synthesis.divergences.map((d, i) => (
+                          <li key={i}>{d.description}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-grey-700">
+                  No synthesis result available.
+                </div>
+              )}
+            </motion.div>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-grey-700">
-              No synthesis result available.
-            </div>
+            <motion.div
+              key="individual"
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="absolute inset-0 overflow-y-auto pr-2"
+            >
+              <div className="space-y-3 max-w-4xl">
+                {state.submissions.map((sub, i) => {
+                  const p = participantsById.get(sub.participant_id);
+                  const pill = p ? pillColorForParticipant(p.id) : null;
+                  return (
+                    <motion.div
+                      key={sub.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                      className="rounded-[8px] bg-white border border-border p-4"
+                    >
+                      {pill ? (
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium mb-2"
+                          style={{ backgroundColor: pill.bg, color: pill.fg }}
+                        >
+                          {p?.name}
+                        </span>
+                      ) : null}
+                      <StageChain stages={sub.stages} />
+                    </motion.div>
+                  );
+                })}
+                {state.submissions.length === 0 ? (
+                  <div className="text-grey-700 text-sm">No submissions.</div>
+                ) : null}
+              </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
 
       {/* Action buttons */}
@@ -134,6 +162,34 @@ export default function SynthesizeView({
         </button>
       </div>
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative px-4 py-2.5 text-[14px] font-medium transition-colors ${
+        active ? "text-foreground" : "text-grey-700 hover:text-foreground"
+      }`}
+    >
+      {children}
+      {active ? (
+        <motion.span
+          layoutId="synth-tab-underline"
+          className="absolute left-0 right-0 -bottom-px h-[2px] bg-foreground"
+          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+        />
+      ) : null}
+    </button>
   );
 }
 
