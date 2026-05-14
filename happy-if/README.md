@@ -25,7 +25,13 @@ Fill in:
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR-ANON-PUBLIC-KEY
+
+# Optional — enables AI auto-clustering via OpenRouter (Opus 4.6 by default)
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=anthropic/claude-opus-4.6
 ```
+
+If `OPENROUTER_API_KEY` is unset, the cluster phase just starts empty and the facilitator drags cards manually — everything else still works.
 
 ### 3. Run locally
 
@@ -56,8 +62,10 @@ Set the two `NEXT_PUBLIC_*` env vars in the Vercel project settings. That's it �
 
 - **Next.js 16 App Router** (React 19, Tailwind v4, Turbopack)
 - **Supabase Postgres** for state, **Supabase Realtime** for live sync
-- One serverless API route (`/api/sessions`) — only used for room-code-collision retries on session creation; everything else goes directly from the browser to Supabase
-- Facilitator auth is a lightweight `facilitator_token` UUID stored in `sessionStorage` and checked on phase / group mutations
+- Two serverless API routes:
+  - `/api/sessions` — creates a session with a unique room code (with collision retry)
+  - `/api/cluster` — calls OpenRouter (Opus 4.6) to auto-cluster responses when the facilitator enters the cluster phase; results flow back through Supabase Realtime
+- Facilitator auth is a lightweight `facilitator_token` UUID stored in `sessionStorage` and checked on phase / group mutations / cluster API calls
 
 ## Routes
 

@@ -26,11 +26,17 @@ export default function ClusterView({
   onAdvance,
   advancing,
   buttonLabel,
+  autoClustering,
+  autoClusterError,
+  onReCluster,
 }: {
   state: SessionState;
   onAdvance: () => void;
   advancing: boolean;
   buttonLabel: string;
+  autoClustering?: boolean;
+  autoClusterError?: string | null;
+  onReCluster?: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newGroupLabel, setNewGroupLabel] = useState("");
@@ -93,16 +99,40 @@ export default function ClusterView({
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex-1 flex flex-col p-8 bg-white">
-        <div className="flex items-baseline justify-between mb-8">
+        <div className="flex items-baseline justify-between mb-6 gap-4">
           <h1 className="text-[28px] font-medium text-foreground">🗂️ Cluster the responses</h1>
-          <button
-            onClick={onAdvance}
-            disabled={advancing || groups.length === 0}
-            className="h-[44px] rounded-[4px] bg-deep-blue-800 text-white px-6 text-sm font-medium hover:bg-deep-blue-600 disabled:opacity-40"
-          >
-            {advancing ? "Starting…" : buttonLabel}
-          </button>
+          <div className="flex items-center gap-3">
+            {onReCluster ? (
+              <button
+                onClick={onReCluster}
+                disabled={advancing || autoClustering}
+                className="h-[44px] rounded-[4px] bg-white border border-foreground text-foreground px-5 text-sm font-medium hover:bg-grey-100 disabled:opacity-40"
+                title="Ask the AI to redo the clusters from scratch"
+              >
+                🔄 Re-cluster
+              </button>
+            ) : null}
+            <button
+              onClick={onAdvance}
+              disabled={advancing || groups.length === 0}
+              className="h-[44px] rounded-[4px] bg-deep-blue-800 text-white px-6 text-sm font-medium hover:bg-deep-blue-600 disabled:opacity-40"
+            >
+              {advancing ? "Starting…" : buttonLabel}
+            </button>
+          </div>
         </div>
+
+        {autoClustering ? (
+          <div className="mb-4 rounded-[8px] bg-yellow-500/20 border border-yellow-500 px-4 py-3 text-sm text-foreground flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-deep-blue-800 animate-pulse" />
+            🤖 Auto-clustering responses with Opus 4.6… (groups will appear when ready)
+          </div>
+        ) : null}
+        {autoClusterError ? (
+          <div className="mb-4 rounded-[8px] bg-[var(--error-bg)] border border-[var(--error-fg)] px-4 py-3 text-sm text-[var(--error-fg)]">
+            ⚠️ Auto-cluster failed: <span className="font-mono text-xs">{autoClusterError}</span>. You can still cluster manually below, or try Re-cluster.
+          </div>
+        ) : null}
 
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
           {/* Unclustered column */}

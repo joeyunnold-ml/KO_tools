@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/useSession";
 import { getFacilitatorToken } from "@/lib/storage";
-import { advancePhase } from "@/lib/actions";
+import { advancePhase, autoCluster } from "@/lib/actions";
 import LobbyView from "./phases/LobbyView";
 import SubmitView from "./phases/SubmitView";
 import ClusterView from "./phases/ClusterView";
@@ -31,10 +31,39 @@ export default function SessionFacilitator({ roomCode }: { roomCode: string }) {
   const state = useSession(roomCode);
   const [token, setToken] = useState<string | null>(null);
   const [advancing, setAdvancing] = useState(false);
+  const [autoClustering, setAutoClustering] = useState(false);
+  const [autoClusterError, setAutoClusterError] = useState<string | null>(null);
+  const autoClusterAttempted = useRef(false);
 
   useEffect(() => {
     if (state.session) setToken(getFacilitatorToken(state.session.id));
   }, [state.session]);
+
+  // Auto-cluster when entering the cluster phase (once, only if no groups yet)
+  useEffect(() => {
+    if (!state.session || !token) return;
+    if (state.session.phase !== "cluster") return;
+    if (state.groups.length > 0) return;
+    if (autoClusterAttempted.current) return;
+    autoClusterAttempted.current = true;
+    setAutoClustering(true);
+    setAutoClusterError(null);
+    autoCluster({ sessionId: state.session.id, facilitatorToken: token })
+      .then((r) => {
+        if (!r.ok) setAutoClusterError(r.error ?? "Auto-clustering failed");
+      })
+      .finally(() => setAutoClustering(false));
+  }, [state.session, state.groups.length, token]);
+
+  async function handleReCluster() {
+    if (!state.session || !token) return;
+    if (!window.confirm("Re-cluster all responses? This deletes the current groups and asks the AI to redo them.")) return;
+    setAutoClustering(true);
+    setAutoClusterError(null);
+    const r = await autoCluster({ sessionId: state.session.id, facilitatorToken: token, force: true });
+    if (!r.ok) setAutoClusterError(r.error ?? "Re-clustering failed");
+    setAutoClustering(false);
+  }
 
   if (state.loading) {
     return (
@@ -101,7 +130,15 @@ export default function SessionFacilitator({ roomCode }: { roomCode: string }) {
       ) : phase === "submit" ? (
         <SubmitView state={state} onAdvance={handleAdvance} advancing={advancing} buttonLabel={PHASE_BUTTON_LABEL[phase]} />
       ) : phase === "cluster" ? (
-        <ClusterView state={state} onAdvance={handleAdvance} advancing={advancing} buttonLabel={PHASE_BUTTON_LABEL[phase]} />
+        <ClusterView
+          state={state}
+          onAdvance={handleAdvance}
+          advancing={advancing}
+          buttonLabel={PHASE_BUTTON_LABEL[phase]}
+          autoClustering={autoClustering}
+          autoClusterError={autoClusterError}
+          onReCluster={handleReCluster}
+        />
       ) : phase === "vote" ? (
         <VoteView state={state} onAdvance={handleAdvance} advancing={advancing} buttonLabel={PHASE_BUTTON_LABEL[phase]} />
       ) : (

@@ -93,6 +93,21 @@ export async function castVote(opts: { sessionId: string; participantId: string;
   if (error) throw error;
 }
 
+export async function autoCluster(opts: {
+  sessionId: string;
+  facilitatorToken: string;
+  force?: boolean;
+}): Promise<{ ok: boolean; group_count?: number; error?: string }> {
+  const res = await fetch("/api/cluster", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data?.error ?? `HTTP ${res.status}` };
+  return { ok: true, group_count: data?.group_count };
+}
+
 export async function removeOneVote(opts: { participantId: string; groupId: string }) {
   const sb = getSupabase();
   // Find one vote row matching, delete by id
