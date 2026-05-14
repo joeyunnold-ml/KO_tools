@@ -72,12 +72,19 @@ create trigger enforce_vote_limit
   before insert on votes
   for each row execute function check_vote_limit();
 
--- Enable Realtime on all five tables
-alter publication supabase_realtime add table sessions;
-alter publication supabase_realtime add table participants;
-alter publication supabase_realtime add table responses;
-alter publication supabase_realtime add table groups;
-alter publication supabase_realtime add table votes;
+-- Enable Realtime on all five tables (idempotent — safe to re-run).
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['sessions','participants','responses','groups','votes'] loop
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+    exception
+      when duplicate_object then null;  -- already in the publication
+    end;
+  end loop;
+end $$;
 
 -- REPLICA IDENTITY FULL on every table so DELETE events emit enough row
 -- data for Supabase Realtime to evaluate session-scoped filters. Without

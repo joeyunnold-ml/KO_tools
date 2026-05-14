@@ -65,13 +65,19 @@ create index if not exists idx_canvas_rows_canvas on canvas_rows(canvas_id);
 create index if not exists idx_stickies_canvas on stickies(canvas_id);
 create index if not exists idx_stickies_cell on stickies(column_id, row_id);
 
--- Enable Realtime on all six tables
-alter publication supabase_realtime add table canvases;
-alter publication supabase_realtime add table canvas_participants;
-alter publication supabase_realtime add table lifecycle_submissions;
-alter publication supabase_realtime add table canvas_columns;
-alter publication supabase_realtime add table canvas_rows;
-alter publication supabase_realtime add table stickies;
+-- Enable Realtime on all six tables (idempotent — safe to re-run).
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['canvases','canvas_participants','lifecycle_submissions','canvas_columns','canvas_rows','stickies'] loop
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+    exception
+      when duplicate_object then null;  -- already in the publication
+    end;
+  end loop;
+end $$;
 
 -- REPLICA IDENTITY FULL so DELETE events propagate through session-scoped
 -- filters (same gotcha we hit in happy-if).
