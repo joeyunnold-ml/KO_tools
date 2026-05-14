@@ -10,6 +10,7 @@ export default function ParticipantLobby({
   participantId: string;
 }) {
   const me = state.participants.find((p) => p.id === participantId);
+  const realParticipants = state.participants.filter((p) => !p.is_facilitator);
   return (
     <main className="flex-1 flex items-center justify-center p-6 text-center bg-grey-100">
       <div className="max-w-sm">
@@ -20,7 +21,7 @@ export default function ParticipantLobby({
           🎉 You&apos;re in, {me?.name}.
         </h1>
         <p className="text-base text-grey-800">
-          👥 {state.participants.length} {state.participants.length === 1 ? "person" : "people"} joined.
+          👥 {realParticipants.length} {realParticipants.length === 1 ? "person" : "people"} joined.
           The facilitator will start shortly.
         </p>
       </div>

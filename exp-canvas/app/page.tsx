@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveFacilitatorToken } from "@/lib/storage";
+import { saveFacilitatorToken, saveFacilitatorParticipantId } from "@/lib/storage";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -18,6 +18,9 @@ export default function LandingPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create canvas");
       saveFacilitatorToken(data.id, data.facilitator_token);
+      if (data.facilitator_participant_id) {
+        saveFacilitatorParticipantId(data.id, data.facilitator_participant_id);
+      }
       router.push(`/canvas/${data.room_code}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");

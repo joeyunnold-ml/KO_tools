@@ -28,10 +28,21 @@ export async function POST() {
 
     if (!error && data) {
       const row = data as CanvasRow;
+
+      // Create a facilitator participant row so the facilitator can add
+      // stickies from the projector without needing to also join on phone.
+      // Filtered out of participant counts via the is_facilitator flag.
+      const { data: fData } = await sb
+        .from("canvas_participants")
+        .insert({ canvas_id: row.id, name: "Facilitator", is_facilitator: true })
+        .select()
+        .single();
+
       return NextResponse.json({
         id: row.id,
         room_code: row.room_code,
         facilitator_token: row.facilitator_token,
+        facilitator_participant_id: (fData as { id?: string } | null)?.id ?? null,
         phase: row.phase,
       });
     }

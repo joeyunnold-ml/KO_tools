@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useCanvas } from "@/lib/useCanvas";
-import { getFacilitatorToken } from "@/lib/storage";
+import { getFacilitatorToken, getFacilitatorParticipantId } from "@/lib/storage";
 import { advancePhase, runSynthesis, seedDefaultStructure, seedStructure } from "@/lib/actions";
 import type { Phase } from "@/lib/types";
 import LobbyView from "./phases/LobbyView";
@@ -14,12 +14,16 @@ import ContributeView from "./phases/ContributeView";
 export default function CanvasFacilitator({ roomCode }: { roomCode: string }) {
   const state = useCanvas(roomCode);
   const [token, setToken] = useState<string | null>(null);
+  const [facilitatorParticipantId, setFacilitatorParticipantId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [synthesizing, setSynthesizing] = useState(false);
   const [synthError, setSynthError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (state.canvas) setToken(getFacilitatorToken(state.canvas.id));
+    if (state.canvas) {
+      setToken(getFacilitatorToken(state.canvas.id));
+      setFacilitatorParticipantId(getFacilitatorParticipantId(state.canvas.id));
+    }
   }, [state.canvas]);
 
   if (state.loading) {
@@ -154,6 +158,7 @@ export default function CanvasFacilitator({ roomCode }: { roomCode: string }) {
         <ContributeView
           state={state}
           token={token!}
+          facilitatorParticipantId={facilitatorParticipantId}
           onEdit={() => setPhase("structure")}
         />
       )}

@@ -37,6 +37,7 @@ export default function ParticipantElicit({
 
   const filled = stages.map((s) => s.trim()).filter(Boolean);
   const canSubmit = filled.length >= 2;
+  const realParticipants = state.participants.filter((p) => !p.is_facilitator);
   const totalSubmittedParticipants = new Set(state.submissions.map((s) => s.participant_id)).size;
 
   function updateStage(i: number, val: string) {
@@ -104,7 +105,7 @@ export default function ParticipantElicit({
             ✏️ Edit your list
           </button>
           <p className="text-xs text-grey-600 text-center mt-6">
-            ⏳ Waiting for the facilitator… {totalSubmittedParticipants} of {state.participants.length} have submitted
+            ⏳ Waiting for the facilitator… {totalSubmittedParticipants} of {realParticipants.length} have submitted
           </p>
         </div>
       </main>

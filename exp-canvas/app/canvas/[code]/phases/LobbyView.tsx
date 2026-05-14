@@ -17,7 +17,7 @@ export default function LobbyView({
   const code = state.canvas.room_code;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const joinUrl = `${origin}/join/${code}`;
-  const participants = state.participants;
+  const participants = state.participants.filter((p) => !p.is_facilitator);
   const enoughJoined = participants.length >= 2;
 
   return (

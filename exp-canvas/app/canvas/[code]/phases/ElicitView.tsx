@@ -14,10 +14,11 @@ export default function ElicitView({
   synthesizing: boolean;
   synthError: string | null;
 }) {
+  const realParticipants = state.participants.filter((p) => !p.is_facilitator);
   const submitted = new Set(state.submissions.map((s) => s.participant_id));
-  const submittedCount = state.participants.filter((p) => submitted.has(p.id)).length;
-  const total = state.participants.length;
-  const waiting = state.participants.filter((p) => !submitted.has(p.id));
+  const submittedCount = realParticipants.filter((p) => submitted.has(p.id)).length;
+  const total = realParticipants.length;
+  const waiting = realParticipants.filter((p) => !submitted.has(p.id));
   const pct = total ? (submittedCount / total) * 100 : 0;
 
   return (
