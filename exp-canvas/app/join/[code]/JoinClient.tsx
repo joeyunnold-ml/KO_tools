@@ -10,9 +10,12 @@ import ParticipantElicit from "./views/ParticipantElicit";
 import ParticipantSynthesize from "./views/ParticipantSynthesize";
 import ParticipantStructure from "./views/ParticipantStructure";
 import ParticipantContribute from "./views/ParticipantContribute";
+import ContributeView from "@/app/canvas/[code]/phases/ContributeView";
+import { useIsTabletPlus } from "@/lib/useMediaQuery";
 
 export default function JoinClient({ roomCode }: { roomCode: string }) {
   const state = useCanvas(roomCode);
+  const isTabletPlus = useIsTabletPlus();
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [joining, setJoining] = useState(false);
@@ -101,5 +104,17 @@ export default function JoinClient({ roomCode }: { roomCode: string }) {
   if (phase === "elicit") return <ParticipantElicit state={state} participantId={participantId} />;
   if (phase === "synthesize") return <ParticipantSynthesize state={state} participantId={participantId} />;
   if (phase === "structure") return <ParticipantStructure state={state} />;
+
+  // Contribute phase: on tablet+, use the full grid view (same as facilitator
+  // but with reduced controls); on mobile, the column-tab layout.
+  if (isTabletPlus) {
+    return (
+      <ContributeView
+        state={state}
+        currentParticipantId={participantId}
+        mode="participant"
+      />
+    );
+  }
   return <ParticipantContribute state={state} participantId={participantId} />;
 }

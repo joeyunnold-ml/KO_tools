@@ -22,23 +22,34 @@ import {
   moveSticky,
   setFocusedColumn,
   toggleHighlight,
+  updateStickyText,
 } from "@/lib/actions";
 import { downloadMarkdown } from "@/lib/exportMarkdown";
 
 const MAX_STICKY_LEN = 200;
 
+export type ContributeMode = "facilitator" | "participant";
+
+interface Props {
+  state: CanvasState;
+  /** facilitator token — only required in facilitator mode for focus updates */
+  token?: string | null;
+  /** the current viewer's participant id (facilitator pseudo-participant or real participant) */
+  currentParticipantId: string | null;
+  mode: ContributeMode;
+  onEdit?: () => void;
+}
+
 export default function ContributeView({
   state,
   token,
-  facilitatorParticipantId,
+  currentParticipantId,
+  mode,
   onEdit,
-}: {
-  state: CanvasState;
-  token: string;
-  facilitatorParticipantId: string | null;
-  onEdit: () => void;
-}) {
+}: Props) {
   if (!state.canvas) return null;
+
+  const isFacilitator = mode === "facilitator";
 
   const columns = useMemo(
     () => [...state.columns].sort((a, b) => a.sort_order - b.sort_order),
@@ -55,6 +66,9 @@ export default function ContributeView({
   const realParticipants = state.participants.filter((p) => !p.is_facilitator);
 
   const focusedColumnId = state.canvas.focused_column_id;
+  const focusedColumn = focusedColumnId
+    ? columns.find((c) => c.id === focusedColumnId) ?? null
+    : null;
 
   const stickiesByCell = useMemo(() => {
     const m = new Map<string, StickyRow[]>();
@@ -74,12 +88,13 @@ export default function ContributeView({
 
   const [expandedCell, setExpandedCell] = useState<string | null>(null);
   const [moving, setMoving] = useState<StickyRow | null>(null);
+  const [editing, setEditing] = useState<StickyRow | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   async function focusColumn(id: string | null) {
-    if (!state.canvas) return;
+    if (!isFacilitator || !state.canvas || !token) return;
     await setFocusedColumn({
       canvasId: state.canvas.id,
       facilitatorToken: token,
@@ -119,21 +134,31 @@ export default function ContributeView({
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex-1 flex flex-col bg-white">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-border">
-          <div className="flex items-center gap-4">
-            <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700">
-              🧪 Experiment Lifecycle Canvas
+        <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-border gap-2">
+          <div className="flex items-center gap-3 md:gap-4 flex-wrap">
+            <p className="text-[12px] md:text-[13px] font-medium uppercase tracking-[2px] text-grey-700">
+              🧪 Lifecycle Canvas
             </p>
-            <span className="text-sm text-grey-700">
-              Code: <span className="font-mono font-medium text-foreground">{state.canvas.room_code}</span>
+            <span className="text-xs md:text-sm text-grey-700">
+              Code:{" "}
+              <span className="font-mono font-medium text-foreground">
+                {state.canvas.room_code}
+              </span>
             </span>
-            <span className="text-sm text-grey-700">👥 {realParticipants.length} joined</span>
-            <span className="text-xs text-grey-600">
-              💡 Drag stickies between cells · Double-click an empty cell to add
+            <span className="text-xs md:text-sm text-grey-700">
+              👥 {realParticipants.length} joined
+            </span>
+            {focusedColumn && !isFacilitator ? (
+              <span className="text-xs text-grey-700">
+                🔍 Focus: <span className="font-medium text-foreground">{focusedColumn.label}</span>
+              </span>
+            ) : null}
+            <span className="hidden md:inline text-xs text-grey-600">
+              💡 Drag to move · Double-click an empty cell to add
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            {focusedColumnId ? (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isFacilitator && focusedColumnId ? (
               <button
                 onClick={() => focusColumn(null)}
                 className="h-[36px] rounded-[4px] bg-yellow-500 text-foreground px-4 text-sm font-medium hover:bg-yellow-600"
@@ -141,18 +166,22 @@ export default function ContributeView({
                 🔍 Exit focus
               </button>
             ) : null}
-            <button
-              onClick={onEdit}
-              className="h-[36px] rounded-[4px] bg-white border border-foreground text-foreground px-4 text-sm font-medium hover:bg-grey-100"
-            >
-              🛠️ Edit structure
-            </button>
-            <button
-              onClick={() => downloadMarkdown(state)}
-              className="h-[36px] rounded-[4px] bg-yellow-500 text-foreground px-4 text-sm font-medium hover:bg-yellow-600"
-            >
-              📥 Export
-            </button>
+            {isFacilitator && onEdit ? (
+              <button
+                onClick={onEdit}
+                className="h-[36px] rounded-[4px] bg-white border border-foreground text-foreground px-4 text-sm font-medium hover:bg-grey-100"
+              >
+                🛠️ Edit structure
+              </button>
+            ) : null}
+            {isFacilitator ? (
+              <button
+                onClick={() => downloadMarkdown(state)}
+                className="h-[36px] rounded-[4px] bg-yellow-500 text-foreground px-4 text-sm font-medium hover:bg-yellow-600"
+              >
+                📥 Export
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -169,16 +198,21 @@ export default function ContributeView({
             {columns.map((c) => {
               const focused = focusedColumnId === c.id;
               const dimmed = focusedColumnId !== null && !focused;
-              return (
+              const className = `bg-white sticky top-0 z-10 px-3 py-2 text-left border-b-2 transition-opacity ${
+                focused ? "border-foreground" : "border-border"
+              } ${dimmed ? "opacity-30" : ""}`;
+              return isFacilitator ? (
                 <button
                   key={c.id}
                   onClick={() => focusColumn(focused ? null : c.id)}
-                  className={`bg-white sticky top-0 z-10 px-3 py-2 text-left border-b-2 transition-opacity ${
-                    focused ? "border-foreground" : "border-border"
-                  } ${dimmed ? "opacity-30" : ""}`}
+                  className={className}
                 >
                   <p className="text-[14px] font-semibold text-foreground">{c.label}</p>
                 </button>
+              ) : (
+                <div key={c.id} className={className}>
+                  <p className="text-[14px] font-semibold text-foreground">{c.label}</p>
+                </div>
               );
             })}
 
@@ -194,17 +228,18 @@ export default function ContributeView({
                   focusedColumnId={focusedColumnId}
                   stickiesByCell={stickiesByCell}
                   participantsById={participantsById}
-                  facilitatorParticipantId={facilitatorParticipantId}
+                  currentParticipantId={currentParticipantId}
+                  isFacilitator={isFacilitator}
                   canvasId={state.canvas!.id}
                   onExpand={setExpandedCell}
                   onMove={setMoving}
+                  onEditSticky={setEditing}
                 />
               );
             })}
           </div>
         </div>
 
-        {/* Drag overlay — floating sticky during drag */}
         <DragOverlay>
           {activeDragSticky && activeDragRowColor ? (
             <StickyVisual
@@ -216,23 +251,27 @@ export default function ContributeView({
           ) : null}
         </DragOverlay>
 
-        {/* Cell expand overlay */}
         <AnimatePresence>
           {expandedCell ? (
             <CellModal
               cellKey={expandedCell}
               stickies={stickiesByCell.get(expandedCell) ?? []}
               participantsById={participantsById}
+              currentParticipantId={currentParticipantId}
+              isFacilitator={isFacilitator}
               onClose={() => setExpandedCell(null)}
               onMove={(s) => {
                 setExpandedCell(null);
                 setMoving(s);
               }}
+              onEditSticky={(s) => {
+                setExpandedCell(null);
+                setEditing(s);
+              }}
             />
           ) : null}
         </AnimatePresence>
 
-        {/* Move dialog */}
         <AnimatePresence>
           {moving ? (
             <MoveDialog
@@ -243,6 +282,19 @@ export default function ContributeView({
               onMoveTo={async (colId, rowId) => {
                 await moveSticky({ id: moving.id, columnId: colId, rowId });
                 setMoving(null);
+              }}
+            />
+          ) : null}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {editing ? (
+            <EditStickyDialog
+              sticky={editing}
+              onCancel={() => setEditing(null)}
+              onSave={async (text) => {
+                await updateStickyText({ id: editing.id, text });
+                setEditing(null);
               }}
             />
           ) : null}
@@ -259,10 +311,12 @@ function RowFragment({
   focusedColumnId,
   stickiesByCell,
   participantsById,
-  facilitatorParticipantId,
+  currentParticipantId,
+  isFacilitator,
   canvasId,
   onExpand,
   onMove,
+  onEditSticky,
 }: {
   row: CanvasRowRow;
   color: ReturnType<typeof rowColor>;
@@ -270,10 +324,12 @@ function RowFragment({
   focusedColumnId: string | null;
   stickiesByCell: Map<string, StickyRow[]>;
   participantsById: Map<string, { name: string; id: string }>;
-  facilitatorParticipantId: string | null;
+  currentParticipantId: string | null;
+  isFacilitator: boolean;
   canvasId: string;
   onExpand: (key: string) => void;
   onMove: (s: StickyRow) => void;
+  onEditSticky: (s: StickyRow) => void;
 }) {
   return (
     <>
@@ -298,10 +354,12 @@ function RowFragment({
             color={color}
             dimmed={dimmed}
             participantsById={participantsById}
-            facilitatorParticipantId={facilitatorParticipantId}
+            currentParticipantId={currentParticipantId}
+            isFacilitator={isFacilitator}
             canvasId={canvasId}
             onExpand={() => onExpand(key)}
             onMove={onMove}
+            onEditSticky={onEditSticky}
           />
         );
       })}
@@ -316,10 +374,12 @@ function Cell({
   color,
   dimmed,
   participantsById,
-  facilitatorParticipantId,
+  currentParticipantId,
+  isFacilitator,
   canvasId,
   onExpand,
   onMove,
+  onEditSticky,
 }: {
   columnId: string;
   rowId: string;
@@ -327,10 +387,12 @@ function Cell({
   color: ReturnType<typeof rowColor>;
   dimmed: boolean;
   participantsById: Map<string, { name: string; id: string }>;
-  facilitatorParticipantId: string | null;
+  currentParticipantId: string | null;
+  isFacilitator: boolean;
   canvasId: string;
   onExpand: () => void;
   onMove: (s: StickyRow) => void;
+  onEditSticky: (s: StickyRow) => void;
 }) {
   const cellKey = `${columnId}__${rowId}`;
   const { setNodeRef, isOver } = useDroppable({ id: cellKey });
@@ -363,8 +425,11 @@ function Cell({
               key={s.id}
               sticky={s}
               participantsById={participantsById}
+              currentParticipantId={currentParticipantId}
+              isFacilitator={isFacilitator}
               color={color}
               onMove={() => onMove(s)}
+              onEdit={() => onEditSticky(s)}
             />
           ))}
         </AnimatePresence>
@@ -377,13 +442,12 @@ function Cell({
           </button>
         ) : null}
 
-        {/* Inline add input */}
         {adding ? (
           <AddStickyInline
             canvasId={canvasId}
             columnId={columnId}
             rowId={rowId}
-            participantId={facilitatorParticipantId}
+            participantId={currentParticipantId}
             color={color}
             onDone={() => setAdding(false)}
           />
@@ -422,9 +486,7 @@ function AddStickyInline({
     const text = draft.trim();
     if (!text) return;
     if (!participantId) {
-      window.alert(
-        "No facilitator participant found. Refresh the page and try again — the facilitator participant is created when you create the canvas.",
-      );
+      window.alert("No participant id available — refresh the page and try again.");
       return;
     }
     setBusy(true);
@@ -464,10 +526,7 @@ function AddStickyInline({
       <div className="flex items-center justify-between mt-1.5">
         <span className="text-[10px] text-grey-600">{MAX_STICKY_LEN - draft.length}</span>
         <div className="flex gap-1">
-          <button
-            onClick={onDone}
-            className="h-6 px-2 text-[11px] rounded-[3px] text-grey-800"
-          >
+          <button onClick={onDone} className="h-6 px-2 text-[11px] rounded-[3px] text-grey-800">
             Cancel
           </button>
           <button
@@ -486,13 +545,19 @@ function AddStickyInline({
 function DraggableStickyCard({
   sticky,
   participantsById,
+  currentParticipantId,
+  isFacilitator,
   color,
   onMove,
+  onEdit,
 }: {
   sticky: StickyRow;
   participantsById: Map<string, { name: string; id: string }>;
+  currentParticipantId: string | null;
+  isFacilitator: boolean;
   color: ReturnType<typeof rowColor>;
   onMove: () => void;
+  onEdit: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: sticky.id });
   return (
@@ -510,8 +575,11 @@ function DraggableStickyCard({
         sticky={sticky}
         participantsById={participantsById}
         color={color}
+        currentParticipantId={currentParticipantId}
+        isFacilitator={isFacilitator}
         dragHandleProps={{ ...attributes, ...listeners }}
         onMove={onMove}
+        onEdit={onEdit}
       />
     </motion.div>
   );
@@ -521,20 +589,31 @@ function StickyVisual({
   sticky,
   participantsById,
   color,
+  currentParticipantId,
+  isFacilitator,
   dragging,
   dragHandleProps,
   onMove,
+  onEdit,
 }: {
   sticky: StickyRow;
   participantsById: Map<string, { name: string; id: string }>;
   color: ReturnType<typeof rowColor>;
+  currentParticipantId?: string | null;
+  isFacilitator?: boolean;
   dragging?: boolean;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   onMove?: () => void;
+  onEdit?: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const p = participantsById.get(sticky.participant_id);
   const pill = p ? pillColorForParticipant(p.id) : null;
+  const isOwner = currentParticipantId === sticky.participant_id;
+  const canEdit = isOwner;
+  const canDelete = isFacilitator || isOwner;
+  const canPin = !!isFacilitator;
+
   return (
     <div
       className={`relative rounded-[6px] p-2 border text-xs ${
@@ -547,9 +626,7 @@ function StickyVisual({
         cursor: dragging ? "grabbing" : "grab",
       }}
     >
-      {/* Drag handle covers the body */}
       <div {...dragHandleProps} className="absolute inset-0 z-0" />
-      {/* Click-to-stop layer for menu */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -577,15 +654,28 @@ function StickyVisual({
           onPointerDown={(e) => e.stopPropagation()}
           className="absolute top-5 right-1 z-20 bg-white border border-border rounded-[4px] shadow-lg py-1 text-[12px]"
         >
-          <button
-            onClick={() => {
-              toggleHighlight({ id: sticky.id, highlighted: !sticky.highlighted });
-              setMenuOpen(false);
-            }}
-            className="w-full text-left px-3 py-1 hover:bg-grey-100 whitespace-nowrap"
-          >
-            {sticky.highlighted ? "★ Unpin" : "⭐ Pin"}
-          </button>
+          {canPin ? (
+            <button
+              onClick={() => {
+                toggleHighlight({ id: sticky.id, highlighted: !sticky.highlighted });
+                setMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-1 hover:bg-grey-100 whitespace-nowrap"
+            >
+              {sticky.highlighted ? "★ Unpin" : "⭐ Pin"}
+            </button>
+          ) : null}
+          {canEdit && onEdit ? (
+            <button
+              onClick={() => {
+                onEdit();
+                setMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-1 hover:bg-grey-100 whitespace-nowrap"
+            >
+              ✏️ Edit
+            </button>
+          ) : null}
           {onMove ? (
             <button
               onClick={() => {
@@ -597,15 +687,17 @@ function StickyVisual({
               ➡ Move to…
             </button>
           ) : null}
-          <button
-            onClick={() => {
-              deleteSticky(sticky.id);
-              setMenuOpen(false);
-            }}
-            className="w-full text-left px-3 py-1 hover:bg-[var(--error-bg)] text-[var(--error-fg)] whitespace-nowrap"
-          >
-            🗑 Delete
-          </button>
+          {canDelete ? (
+            <button
+              onClick={() => {
+                deleteSticky(sticky.id);
+                setMenuOpen(false);
+              }}
+              className="w-full text-left px-3 py-1 hover:bg-[var(--error-bg)] text-[var(--error-fg)] whitespace-nowrap"
+            >
+              🗑 Delete
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -616,14 +708,20 @@ function CellModal({
   cellKey,
   stickies,
   participantsById,
+  currentParticipantId,
+  isFacilitator,
   onClose,
   onMove,
+  onEditSticky,
 }: {
   cellKey: string;
   stickies: StickyRow[];
   participantsById: Map<string, { name: string; id: string }>;
+  currentParticipantId: string | null;
+  isFacilitator: boolean;
   onClose: () => void;
   onMove: (s: StickyRow) => void;
+  onEditSticky: (s: StickyRow) => void;
 }) {
   void cellKey;
   return (
@@ -651,10 +749,11 @@ function CellModal({
           {stickies.map((s) => {
             const p = participantsById.get(s.participant_id);
             const pill = p ? pillColorForParticipant(p.id) : null;
+            const isOwner = currentParticipantId === s.participant_id;
             return (
               <div key={s.id} className="rounded-[6px] border border-border p-3">
                 <p className="text-sm text-foreground leading-snug">{s.text}</p>
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
                   {pill ? (
                     <span
                       className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
@@ -663,21 +762,33 @@ function CellModal({
                       {p?.name}
                     </span>
                   ) : null}
-                  <button
-                    onClick={() => toggleHighlight({ id: s.id, highlighted: !s.highlighted })}
-                    className="text-xs text-grey-700 hover:text-foreground"
-                  >
-                    {s.highlighted ? "★ Unpin" : "⭐ Pin"}
-                  </button>
+                  {isFacilitator ? (
+                    <button
+                      onClick={() => toggleHighlight({ id: s.id, highlighted: !s.highlighted })}
+                      className="text-xs text-grey-700 hover:text-foreground"
+                    >
+                      {s.highlighted ? "★ Unpin" : "⭐ Pin"}
+                    </button>
+                  ) : null}
+                  {isOwner ? (
+                    <button
+                      onClick={() => onEditSticky(s)}
+                      className="text-xs text-grey-700 hover:text-foreground"
+                    >
+                      ✏️ Edit
+                    </button>
+                  ) : null}
                   <button onClick={() => onMove(s)} className="text-xs text-grey-700 hover:text-foreground">
                     ➡ Move
                   </button>
-                  <button
-                    onClick={() => deleteSticky(s.id)}
-                    className="text-xs text-grey-700 hover:text-[var(--error-fg)]"
-                  >
-                    🗑 Delete
-                  </button>
+                  {(isFacilitator || isOwner) ? (
+                    <button
+                      onClick={() => deleteSticky(s.id)}
+                      className="text-xs text-grey-700 hover:text-[var(--error-fg)]"
+                    >
+                      🗑 Delete
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );
@@ -745,6 +856,81 @@ function MoveDialog({
           >
             Move
           </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function EditStickyDialog({
+  sticky,
+  onCancel,
+  onSave,
+}: {
+  sticky: StickyRow;
+  onCancel: () => void;
+  onSave: (text: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(sticky.text);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    const text = draft.trim();
+    if (!text) return;
+    setBusy(true);
+    try {
+      await onSave(text);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-6"
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-[8px] max-w-md w-full p-6"
+      >
+        <h3 className="text-[18px] font-semibold mb-3">Edit sticky</h3>
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, MAX_STICKY_LEN))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              save();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+          rows={4}
+          className="w-full rounded-[4px] border border-border px-3 py-2 text-sm focus:outline-none focus:border-foreground resize-none"
+        />
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-xs text-grey-600">{MAX_STICKY_LEN - draft.length} chars left</span>
+          <div className="flex gap-2">
+            <button onClick={onCancel} className="h-[36px] px-4 rounded-[4px] text-grey-800">
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={!draft.trim() || busy}
+              className="h-[36px] px-4 rounded-[4px] bg-deep-blue-800 text-white text-sm font-medium disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </motion.div>
     </motion.div>

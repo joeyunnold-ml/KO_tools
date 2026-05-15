@@ -187,7 +187,8 @@ export default function CanvasFacilitator({ roomCode }: { roomCode: string }) {
         <ContributeView
           state={state}
           token={token!}
-          facilitatorParticipantId={facilitatorParticipantId}
+          currentParticipantId={facilitatorParticipantId}
+          mode="facilitator"
           onEdit={() => setPhase("structure")}
         />
       )}
