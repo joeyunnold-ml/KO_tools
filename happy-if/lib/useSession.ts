@@ -5,6 +5,7 @@ import { getSupabase } from "./supabase";
 import type {
   GroupRow,
   ParticipantRow,
+  QuestionRow,
   ResponseRow,
   SessionRow,
   VoteRow,
@@ -13,6 +14,7 @@ import type {
 export interface SessionState {
   session: SessionRow | null;
   participants: ParticipantRow[];
+  questions: QuestionRow[];
   responses: ResponseRow[];
   groups: GroupRow[];
   votes: VoteRow[];
@@ -24,6 +26,7 @@ export function useSession(roomCode: string): SessionState {
   const [state, setState] = useState<SessionState>({
     session: null,
     participants: [],
+    questions: [],
     responses: [],
     groups: [],
     votes: [],
@@ -51,8 +54,9 @@ export function useSession(roomCode: string): SessionState {
       }
       const sessionId = sessionData.id;
 
-      const [pRes, gRes, rRes, vRes] = await Promise.all([
+      const [pRes, qRes, gRes, rRes, vRes] = await Promise.all([
         sb.from("participants").select("*").eq("session_id", sessionId).order("joined_at"),
+        sb.from("questions").select("*").eq("session_id", sessionId).order("sort_order"),
         sb.from("groups").select("*").eq("session_id", sessionId).order("sort_order"),
         sb.from("responses").select("*").eq("session_id", sessionId).order("created_at"),
         sb.from("votes").select("*").eq("session_id", sessionId),
@@ -63,6 +67,7 @@ export function useSession(roomCode: string): SessionState {
       setState({
         session: sessionData,
         participants: pRes.data ?? [],
+        questions: qRes.data ?? [],
         groups: gRes.data ?? [],
         responses: rRes.data ?? [],
         votes: vRes.data ?? [],
@@ -87,6 +92,13 @@ export function useSession(roomCode: string): SessionState {
           { event: "*", schema: "public", table: "participants", filter: `session_id=eq.${sessionId}` },
           (payload) => {
             setState((s) => applyChange(s, "participants", payload));
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "questions", filter: `session_id=eq.${sessionId}` },
+          (payload) => {
+            setState((s) => applyChange(s, "questions", payload));
           },
         )
         .on(
@@ -129,7 +141,7 @@ type ChangePayload = {
   old: Record<string, unknown>;
 };
 
-function applyChange<K extends "participants" | "responses" | "groups" | "votes">(
+function applyChange<K extends "participants" | "questions" | "responses" | "groups" | "votes">(
   state: SessionState,
   key: K,
   payload: ChangePayload,

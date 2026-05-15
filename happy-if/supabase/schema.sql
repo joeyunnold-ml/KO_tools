@@ -104,3 +104,94 @@ alter table participants   disable row level security;
 alter table groups         disable row level security;
 alter table responses      disable row level security;
 alter table votes          disable row level security;
+
+-- ---------------------------------------------------------------------------
+-- MULTI-QUESTION MIGRATION (idempotent — safe to re-run)
+-- ---------------------------------------------------------------------------
+-- Sessions now support multiple prompts. Each prompt is a row in `questions`.
+-- `responses.question_id` and `groups.question_id` scope responses + groups
+-- to a specific question. Votes inherit their question via group_id.
+
+create table if not exists questions (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid references sessions(id) on delete cascade not null,
+  text text not null,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table responses add column if not exists question_id uuid references questions(id) on delete cascade;
+alter table groups    add column if not exists question_id uuid references questions(id) on delete cascade;
+
+create index if not exists idx_questions_session     on questions(session_id);
+create index if not exists idx_responses_question    on responses(question_id);
+create index if not exists idx_groups_question       on groups(question_id);
+
+-- Backfill: for any existing session that has responses or groups without a
+-- question_id, create a default question with the legacy prompt and link
+-- everything to it. Idempotent — only runs for sessions with NULL question_id.
+do $$
+declare
+  s_id uuid;
+  q_id uuid;
+begin
+  for s_id in
+    select distinct session_id from responses where question_id is null
+    union
+    select distinct session_id from groups where question_id is null
+  loop
+    insert into questions (session_id, text, sort_order)
+    values (s_id, 'I''ll consider this engagement a success if ___', 0)
+    returning id into q_id;
+    update responses set question_id = q_id where session_id = s_id and question_id is null;
+    update groups    set question_id = q_id where session_id = s_id and question_id is null;
+  end loop;
+end $$;
+
+alter table questions replica identity full;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['questions'] loop
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+    exception when duplicate_object then null;
+    end;
+  end loop;
+end $$;
+
+alter table questions disable row level security;
+
+-- Replace the vote-limit trigger so the cap is PER QUESTION rather than
+-- per session. Legacy rows with NULL question_id fall back to per-session.
+create or replace function check_vote_limit()
+returns trigger as $$
+declare
+  question_uuid uuid;
+  used_count integer;
+begin
+  select question_id into question_uuid from groups where id = NEW.group_id;
+
+  if question_uuid is null then
+    -- Legacy: no question_id on group, fall back to per-session limit
+    select count(*) into used_count
+      from votes
+     where participant_id = NEW.participant_id
+       and session_id = NEW.session_id;
+  else
+    -- New: count votes by this participant across all groups belonging to this question
+    select count(*) into used_count
+      from votes v
+      join groups g on g.id = v.group_id
+     where v.participant_id = NEW.participant_id
+       and g.question_id = question_uuid;
+  end if;
+
+  if used_count >= 3 then
+    raise exception 'Participant has reached the maximum of 3 votes for this question';
+  end if;
+  return NEW;
+end;
+$$ language plpgsql;
+-- Trigger itself doesn't need recreating; CREATE OR REPLACE FUNCTION updates the existing trigger's behavior.

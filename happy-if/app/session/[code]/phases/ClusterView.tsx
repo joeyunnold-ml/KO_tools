@@ -25,6 +25,7 @@ import { type GroupPalette, paletteFor, pillColorForParticipant } from "@/lib/pa
 
 export default function ClusterView({
   state,
+  questionId,
   onAdvance,
   advancing,
   buttonLabel,
@@ -33,6 +34,7 @@ export default function ClusterView({
   onReCluster,
 }: {
   state: SessionState;
+  questionId: string;
   onAdvance: () => void;
   advancing: boolean;
   buttonLabel: string;
@@ -44,17 +46,19 @@ export default function ClusterView({
   const [newGroupLabel, setNewGroupLabel] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  // Sparkle finale: trigger when autoClustering transitions from true → false AND we have groups
+  // Sparkle finale: trigger when autoClustering transitions from true → false
+  // AND this question now has groups
   const [showFinale, setShowFinale] = useState(false);
   const prevAutoClustering = useRef(autoClustering);
+  const questionGroupCount = state.groups.filter((g) => g.question_id === questionId).length;
   useEffect(() => {
-    if (prevAutoClustering.current && !autoClustering && state.groups.length > 0 && !autoClusterError) {
+    if (prevAutoClustering.current && !autoClustering && questionGroupCount > 0 && !autoClusterError) {
       setShowFinale(true);
       const t = setTimeout(() => setShowFinale(false), 2200);
       return () => clearTimeout(t);
     }
     prevAutoClustering.current = autoClustering;
-  }, [autoClustering, state.groups.length, autoClusterError]);
+  }, [autoClustering, questionGroupCount, autoClusterError]);
 
   const participantsById = useMemo(() => {
     const m = new Map<string, ParticipantRow>();
@@ -62,16 +66,22 @@ export default function ClusterView({
     return m;
   }, [state.participants]);
 
-  const unclustered = state.responses.filter((r) => r.group_id === null);
-  const groups = [...state.groups].sort((a, b) => a.sort_order - b.sort_order);
+  // Filter everything to the active question
+  const unclustered = state.responses.filter(
+    (r) => r.question_id === questionId && r.group_id === null,
+  );
+  const groups = state.groups
+    .filter((g) => g.question_id === questionId)
+    .sort((a, b) => a.sort_order - b.sort_order);
   const responsesByGroup = useMemo(() => {
     const m = new Map<string, ResponseRow[]>();
     groups.forEach((g) => m.set(g.id, []));
     state.responses.forEach((r) => {
+      if (r.question_id !== questionId) return;
       if (r.group_id && m.has(r.group_id)) m.get(r.group_id)!.push(r);
     });
     return m;
-  }, [groups, state.responses]);
+  }, [groups, state.responses, questionId]);
 
   const activeResponse = activeId ? state.responses.find((r) => r.id === activeId) ?? null : null;
 
@@ -102,6 +112,7 @@ export default function ClusterView({
     try {
       await createGroup({
         sessionId: state.session.id,
+        questionId,
         label,
         sortOrder: groups.length,
       });

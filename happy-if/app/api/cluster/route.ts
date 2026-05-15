@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { ParticipantRow, ResponseRow, SessionRow } from "@/lib/types";
+import type {
+  ParticipantRow,
+  QuestionRow,
+  ResponseRow,
+  SessionRow,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,6 +23,7 @@ function delay(ms: number): Promise<void> {
 
 interface ClusterRequest {
   sessionId: string;
+  questionId: string;
   facilitatorToken: string;
   force?: boolean;
 }
@@ -51,9 +57,12 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { sessionId, facilitatorToken, force } = body;
-  if (!sessionId || !facilitatorToken) {
-    return NextResponse.json({ error: "Missing sessionId or facilitatorToken" }, { status: 400 });
+  const { sessionId, questionId, facilitatorToken, force } = body;
+  if (!sessionId || !questionId || !facilitatorToken) {
+    return NextResponse.json(
+      { error: "Missing sessionId, questionId, or facilitatorToken" },
+      { status: 400 },
+    );
   }
 
   const sb = admin();
@@ -70,18 +79,35 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  // 2. Skip if already clustered (unless force=true)
+  // 2. Get the question text for the prompt
+  const { data: questionData } = await sb
+    .from("questions")
+    .select("*")
+    .eq("id", questionId)
+    .maybeSingle();
+  const question = questionData as QuestionRow | null;
+  if (!question || question.session_id !== sessionId) {
+    return NextResponse.json({ error: "Question not found in this session" }, { status: 404 });
+  }
+
+  // 3. Skip if already clustered for this question (unless force=true)
   const { data: existingGroups } = await sb
     .from("groups")
     .select("id")
-    .eq("session_id", sessionId);
+    .eq("session_id", sessionId)
+    .eq("question_id", questionId);
   if (existingGroups && existingGroups.length > 0 && !force) {
     return NextResponse.json({ ok: true, skipped: "groups_exist", group_count: existingGroups.length });
   }
 
-  // 3. Fetch responses + participants
+  // 4. Fetch responses (filtered to this question) + participants
   const [responsesRes, participantsRes] = await Promise.all([
-    sb.from("responses").select("*").eq("session_id", sessionId).order("created_at"),
+    sb
+      .from("responses")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("question_id", questionId)
+      .order("created_at"),
     sb.from("participants").select("*").eq("session_id", sessionId),
   ]);
   const responses = (responsesRes.data ?? []) as ResponseRow[];
@@ -93,7 +119,6 @@ export async function POST(req: Request) {
 
   const participantsById = new Map(participants.map((p) => [p.id, p]));
 
-  // 4. Build the prompt
   const lines = responses.map((r, i) => {
     const p = participantsById.get(r.participant_id);
     const name = p?.name ?? "anon";
@@ -102,7 +127,7 @@ export async function POST(req: Request) {
 
   const prompt = `You are clustering responses from a workshop kickoff. The prompt was:
 
-"I'll consider this engagement a success if ___"
+"${question.text}"
 
 Participant responses (the bracketed numbers are stable IDs you must reference):
 
@@ -132,11 +157,10 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
     }
   ],
   "unclustered": [
-    {"index": 7, "summary": "Better team coffee"}
+    {"index": 7, "summary": "Lone outlier example"}
   ]
 }`;
 
-  // 5. Call OpenRouter
   const model = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-4.6";
   let llmResponseText: string;
   try {
@@ -176,7 +200,6 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
     );
   }
 
-  // 6. Parse JSON
   let parsed: LLMResponse;
   try {
     const cleaned = llmResponseText
@@ -197,14 +220,17 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
     return NextResponse.json({ error: "LLM response missing 'groups' array" }, { status: 502 });
   }
 
-  // 7. Clear existing if force
+  // Clear existing groups for THIS question if force=true
   if (force && existingGroups && existingGroups.length > 0) {
-    await sb.from("groups").delete().eq("session_id", sessionId);
-    await sb.from("responses").update({ group_id: null }).eq("session_id", sessionId);
+    await sb.from("groups").delete().eq("session_id", sessionId).eq("question_id", questionId);
+    await sb
+      .from("responses")
+      .update({ group_id: null })
+      .eq("session_id", sessionId)
+      .eq("question_id", questionId);
   }
 
-  // 8. Write to DB — STAGGERED so Realtime events feel like a stream
-  // Group inserts first (quick), then animate responses arriving one by one
+  // Insert groups (staggered for streaming UX), each tagged with question_id
   const groupRows: Array<{ id: string; items: LLMItem[] }> = [];
   for (let i = 0; i < parsed.groups.length; i++) {
     const g = parsed.groups[i];
@@ -212,19 +238,22 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
 
     const { data: groupInsert } = await sb
       .from("groups")
-      .insert({ session_id: sessionId, label: g.label, sort_order: i })
+      .insert({
+        session_id: sessionId,
+        question_id: questionId,
+        label: g.label,
+        sort_order: i,
+      })
       .select()
       .single();
     if (!groupInsert) continue;
     const groupRow = groupInsert as { id: string };
     groupRows.push({ id: groupRow.id, items: g.items });
 
-    // Small pause between group inserts so the column skeletons stagger
     await delay(250 + Math.floor(Math.random() * 200));
   }
 
-  // 9. Now assign responses one at a time with random delays — the show
-  // We interleave across groups so multiple columns fill in parallel.
+  // Assign responses one at a time, interleaved across groups
   const queue: Array<{ groupId: string; item: LLMItem }> = [];
   const maxItems = Math.max(...groupRows.map((g) => g.items.length), 0);
   for (let i = 0; i < maxItems; i++) {
@@ -241,10 +270,10 @@ Respond with ONLY valid JSON, no markdown fences, no preamble:
       .from("responses")
       .update({ group_id: groupId, summary: item.summary ?? null })
       .eq("id", responseId);
-    await delay(180 + Math.floor(Math.random() * 280)); // 180-460ms per card
+    await delay(180 + Math.floor(Math.random() * 280));
   }
 
-  // 10. Handle unclustered summaries (no group_id change, just summary)
+  // Unclustered summaries
   for (const item of parsed.unclustered ?? []) {
     const responseId = responses[item.index - 1]?.id;
     if (!responseId) continue;

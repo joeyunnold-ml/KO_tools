@@ -28,6 +28,14 @@ export async function POST() {
 
     if (!error && data) {
       const row = data as SessionRow;
+      // Seed a default question so single-question UX still works out of the box.
+      await sb
+        .from("questions")
+        .insert({
+          session_id: row.id,
+          text: "I'll consider this engagement a success if ___",
+          sort_order: 0,
+        });
       return NextResponse.json({
         id: row.id,
         room_code: row.room_code,

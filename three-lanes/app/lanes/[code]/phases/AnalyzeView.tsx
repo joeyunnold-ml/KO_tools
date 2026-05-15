@@ -19,7 +19,7 @@ export default function AnalyzeView() {
         Looking for consensus and conflict…
       </h1>
       <p className="mt-3 text-[14px] text-grey-700 max-w-md">
-        Opus 4.6 is reading the classifications. We&apos;ll show consensus items first, then walk through the contested ones one at a time.
+        Reading the classifications. We&apos;ll show consensus items first, then walk through the contested ones one at a time.
       </p>
       <div className="mt-8 flex gap-1.5">
         {[0, 1, 2].map((i) => (

@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import type { SessionState } from "@/lib/useSession";
 import type { ParticipantRow } from "@/lib/types";
 import { paletteFor, pillColorForParticipant } from "@/lib/palette";
 
-const VOTES_NEEDED = 3;
+const VOTES_PER_QUESTION = 3;
 
 export default function VoteView({
   state,
@@ -19,31 +19,61 @@ export default function VoteView({
   advancing: boolean;
   buttonLabel: string;
 }) {
-  const groups = [...state.groups].sort((a, b) => a.sort_order - b.sort_order);
+  const questions = useMemo(
+    () => [...state.questions].sort((a, b) => a.sort_order - b.sort_order),
+    [state.questions],
+  );
+  const totalVotesPerParticipant = VOTES_PER_QUESTION * questions.length;
 
+  // group_id → question_id
+  const groupQuestionMap = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const g of state.groups) m.set(g.id, g.question_id);
+    return m;
+  }, [state.groups]);
+
+  // Per-participant: how many questions they've fully voted on
   const participantsWithProgress = useMemo(() => {
-    const counts = new Map<string, number>();
+    // Count votes per participant per question
+    const counts = new Map<string, Map<string, number>>(); // participantId → questionId → count
     for (const v of state.votes) {
-      counts.set(v.participant_id, (counts.get(v.participant_id) ?? 0) + 1);
+      const qId = groupQuestionMap.get(v.group_id);
+      if (!qId) continue;
+      let m = counts.get(v.participant_id);
+      if (!m) {
+        m = new Map();
+        counts.set(v.participant_id, m);
+      }
+      m.set(qId, (m.get(qId) ?? 0) + 1);
     }
     return state.participants
-      .map((p) => ({ p, used: counts.get(p.id) ?? 0 }))
+      .map((p) => {
+        const myCounts = counts.get(p.id) ?? new Map();
+        const fullyVotedQs = questions.filter((q) => (myCounts.get(q.id) ?? 0) >= VOTES_PER_QUESTION).length;
+        const totalUsed = Array.from(myCounts.values()).reduce((a, b) => a + b, 0);
+        return { p, fullyVotedQs, totalUsed };
+      })
       .sort((a, b) => {
-        if (a.used !== b.used) return a.used - b.used;
+        if (a.fullyVotedQs !== b.fullyVotedQs) return a.fullyVotedQs - b.fullyVotedQs;
         return a.p.name.localeCompare(b.p.name);
       });
-  }, [state.participants, state.votes]);
+  }, [state.participants, state.votes, groupQuestionMap, questions]);
 
-  const doneCount = participantsWithProgress.filter((x) => x.used >= VOTES_NEEDED).length;
+  const fullyDone = participantsWithProgress.filter((x) => x.fullyVotedQs === questions.length).length;
   const total = participantsWithProgress.length;
-  const pct = total ? (doneCount / total) * 100 : 0;
+  const pct = total ? (fullyDone / total) * 100 : 0;
 
   return (
     <div className="flex-1 flex flex-col p-8 lg:p-10 bg-white">
-      <div className="flex items-baseline justify-between mb-6">
+      <div className="flex items-baseline justify-between mb-6 flex-wrap gap-2">
         <h1 className="text-[28px] font-medium text-foreground">🗳️ Voting in progress</h1>
         <div className="text-[18px] text-grey-800">
-          🧮 <span className="font-medium text-foreground">{doneCount}</span> of {total} have voted
+          🧮 <span className="font-medium text-foreground">{fullyDone}</span> of {total} fully done
+          {questions.length > 1 ? (
+            <span className="ml-2 text-[14px] text-grey-700">
+              ({VOTES_PER_QUESTION} votes × {questions.length} prompts = {totalVotesPerParticipant} per person)
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -63,47 +93,68 @@ export default function VoteView({
           👥 Voting progress
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <AnimatePresence mode="popLayout">
-            {participantsWithProgress.map(({ p, used }) => (
-              <ParticipantRowCard key={p.id} participant={p} used={used} />
-            ))}
-          </AnimatePresence>
+          {participantsWithProgress.map(({ p, fullyVotedQs }) => (
+            <ParticipantRowCard
+              key={p.id}
+              participant={p}
+              fullyVotedQs={fullyVotedQs}
+              totalQuestions={questions.length}
+            />
+          ))}
         </div>
 
-        {groups.length > 0 ? (
+        {questions.length > 0 ? (
           <>
             <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mt-10 mb-4">
               🗂️ Voting on
             </p>
-            <div className="flex flex-wrap gap-2">
-              {groups.map((g, idx) => {
-                const palette = paletteFor(idx);
-                return (
-                  <span
-                    key={g.id}
-                    className="inline-flex items-center px-4 py-2 rounded-[6px] border-2 text-[14px] font-medium"
-                    style={{
-                      backgroundColor: palette.bg,
-                      borderColor: palette.border,
-                      color: palette.text,
-                    }}
-                  >
-                    {g.label}
-                  </span>
-                );
-              })}
-            </div>
+            {questions.map((q, qIdx) => {
+              const qGroups = state.groups
+                .filter((g) => g.question_id === q.id)
+                .sort((a, b) => a.sort_order - b.sort_order);
+              return (
+                <div key={q.id} className="mb-4">
+                  {questions.length > 1 ? (
+                    <p className="text-[14px] font-medium text-foreground mb-2">
+                      <span className="text-grey-600 mr-1">{qIdx + 1}.</span>
+                      {q.text}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    {qGroups.map((g, idx) => {
+                      const palette = paletteFor(idx);
+                      return (
+                        <span
+                          key={g.id}
+                          className="inline-flex items-center px-3 py-1.5 rounded-[6px] border-2 text-[13px] font-medium"
+                          style={{
+                            backgroundColor: palette.bg,
+                            borderColor: palette.border,
+                            color: palette.text,
+                          }}
+                        >
+                          {g.label}
+                        </span>
+                      );
+                    })}
+                    {qGroups.length === 0 ? (
+                      <span className="text-xs text-grey-600 italic">(no groups for this prompt)</span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
           </>
         ) : null}
       </div>
 
-      <div className="mt-8 flex justify-end items-center gap-4">
-        {doneCount < total ? (
+      <div className="mt-8 flex justify-end items-center gap-4 flex-wrap">
+        {fullyDone < total ? (
           <p className="text-base text-grey-700">
             ⏳ Waiting on:{" "}
             <span className="font-medium text-foreground">
               {participantsWithProgress
-                .filter((x) => x.used < VOTES_NEEDED)
+                .filter((x) => x.fullyVotedQs < questions.length)
                 .map((x) => x.p.name)
                 .join(", ")}
             </span>
@@ -128,19 +179,23 @@ export function VoteDots({ count, color = "#000F1E" }: { count: number; color?: 
   return (
     <div className="flex flex-wrap gap-1.5">
       {Array.from({ length: shown }).map((_, i) => (
-        <span
-          key={i}
-          className="inline-block w-3 h-3 rounded-full"
-          style={{ backgroundColor: color }}
-        />
+        <span key={i} className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
       ))}
       {count > shown ? <span className="text-xs text-grey-700 ml-1">+{count - shown}</span> : null}
     </div>
   );
 }
 
-function ParticipantRowCard({ participant, used }: { participant: ParticipantRow; used: number }) {
-  const done = used >= VOTES_NEEDED;
+function ParticipantRowCard({
+  participant,
+  fullyVotedQs,
+  totalQuestions,
+}: {
+  participant: ParticipantRow;
+  fullyVotedQs: number;
+  totalQuestions: number;
+}) {
+  const done = fullyVotedQs >= totalQuestions;
   const pill = pillColorForParticipant(participant.id);
 
   return (
@@ -151,9 +206,7 @@ function ParticipantRowCard({ participant, used }: { participant: ParticipantRow
       className={`rounded-[8px] border-2 p-4 flex items-center gap-3 ${
         done ? "bg-white" : "bg-grey-100"
       }`}
-      style={{
-        borderColor: done ? "var(--success-fg)" : "var(--border)",
-      }}
+      style={{ borderColor: done ? "var(--success-fg)" : "var(--border)" }}
     >
       <span
         className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0"
@@ -161,21 +214,9 @@ function ParticipantRowCard({ participant, used }: { participant: ParticipantRow
       >
         {participant.name}
       </span>
-      <div className="flex gap-1 flex-1 justify-end">
-        {Array.from({ length: VOTES_NEEDED }).map((_, i) => (
-          <motion.span
-            key={i}
-            initial={false}
-            animate={{
-              scale: i < used ? 1 : 0.85,
-              opacity: i < used ? 1 : 0.5,
-            }}
-            transition={{ type: "spring", stiffness: 400, damping: 22 }}
-            className={`inline-block w-4 h-4 rounded-full ${
-              i < used ? "bg-deep-blue-800" : "bg-grey-300"
-            }`}
-          />
-        ))}
+      <div className="flex-1 text-right text-[13px] text-grey-800">
+        <span className="font-medium text-foreground">{fullyVotedQs}</span> / {totalQuestions}{" "}
+        prompts
       </div>
       {done ? (
         <motion.span

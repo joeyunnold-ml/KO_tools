@@ -17,9 +17,18 @@ export interface ParticipantRow {
   joined_at: string;
 }
 
+export interface QuestionRow {
+  id: string;
+  session_id: string;
+  text: string;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface GroupRow {
   id: string;
   session_id: string;
+  question_id: string | null;
   label: string;
   sort_order: number;
 }
@@ -28,6 +37,7 @@ export interface ResponseRow {
   id: string;
   session_id: string;
   participant_id: string;
+  question_id: string | null;
   text: string;
   summary: string | null;
   group_id: string | null;
@@ -47,6 +57,7 @@ export interface Database {
     Tables: {
       sessions: { Row: SessionRow; Insert: Partial<SessionRow>; Update: Partial<SessionRow> };
       participants: { Row: ParticipantRow; Insert: Partial<ParticipantRow>; Update: Partial<ParticipantRow> };
+      questions: { Row: QuestionRow; Insert: Partial<QuestionRow>; Update: Partial<QuestionRow> };
       groups: { Row: GroupRow; Insert: Partial<GroupRow>; Update: Partial<GroupRow> };
       responses: { Row: ResponseRow; Insert: Partial<ResponseRow>; Update: Partial<ResponseRow> };
       votes: { Row: VoteRow; Insert: Partial<VoteRow>; Update: Partial<VoteRow> };
