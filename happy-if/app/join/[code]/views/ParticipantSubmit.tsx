@@ -67,45 +67,45 @@ export default function ParticipantSubmit({
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   return (
-    <main className="flex-1 flex flex-col p-5 bg-grey-100">
-      <div className="max-w-md mx-auto w-full">
+    <main className="flex-1 flex flex-col p-5 md:p-8 lg:p-10 bg-grey-100">
+      <div className="max-w-2xl md:max-w-5xl mx-auto w-full">
         {/* Wizard nav */}
         {questions.length > 1 ? (
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 md:mb-6">
             <button
               onClick={() => setIdx((i) => Math.max(0, i - 1))}
               disabled={idx === 0}
-              className="text-sm text-grey-700 hover:text-foreground disabled:opacity-30"
+              className="text-sm md:text-base text-grey-700 hover:text-foreground disabled:opacity-30"
             >
               ← Prev
             </button>
-            <p className="text-[12px] font-medium uppercase tracking-[2px] text-grey-700">
+            <p className="text-[12px] md:text-[13px] font-medium uppercase tracking-[2px] text-grey-700">
               Prompt {idx + 1} of {questions.length}
             </p>
             <button
               onClick={() => setIdx((i) => Math.min(questions.length - 1, i + 1))}
               disabled={idx === questions.length - 1}
-              className="text-sm text-grey-700 hover:text-foreground disabled:opacity-30"
+              className="text-sm md:text-base text-grey-700 hover:text-foreground disabled:opacity-30"
             >
               Next →
             </button>
           </div>
         ) : (
-          <p className="text-[12px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
+          <p className="text-[12px] md:text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-2">
             💭 Prompt
           </p>
         )}
 
         {/* Pip indicator (only multi-question) */}
         {questions.length > 1 ? (
-          <div className="flex gap-1.5 mb-4 justify-center">
+          <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center">
             {questions.map((q, i) => {
               const answered = (myCountByQ.get(q.id) ?? 0) > 0;
               return (
                 <button
                   key={q.id}
                   onClick={() => setIdx(i)}
-                  className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                  className={`w-2.5 h-2.5 md:w-3 md:h-3 rounded-full transition-colors ${
                     i === idx
                       ? "bg-deep-blue-800"
                       : answered
@@ -127,35 +127,40 @@ export default function ParticipantSubmit({
             exit={{ opacity: 0, x: -8 }}
             transition={{ duration: 0.18 }}
           >
-            <h1 className="text-[20px] font-medium leading-snug text-foreground mb-6">
+            <h1 className="text-[20px] md:text-[28px] font-medium leading-snug text-foreground mb-6 md:mb-8">
               ✍️ {activeQ.text}
             </h1>
 
-            <SubmitForm
-              sessionId={state.session!.id}
-              questionId={activeQ.id}
-              participantId={participantId}
-              currentCount={myForActive.length}
-            />
+            {/* Two-column on desktop: form on the left, your responses on the right */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+              <div>
+                <SubmitForm
+                  sessionId={state.session!.id}
+                  questionId={activeQ.id}
+                  participantId={participantId}
+                  currentCount={myForActive.length}
+                />
+              </div>
 
-            <div className="mt-6 mb-4">
-              <p className="text-[12px] font-medium uppercase tracking-[2px] text-grey-700 mb-3">
-                📝 Your responses for this prompt
-              </p>
-              {myForActive.length === 0 ? (
-                <p className="text-sm text-grey-600">📭 Nothing submitted yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {myForActive.map((r, i) => (
-                    <MyResponseRow key={r.id} index={i} text={r.text} responseId={r.id} />
-                  ))}
-                </ul>
-              )}
+              <div>
+                <p className="text-[12px] md:text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-3">
+                  📝 Your responses for this prompt
+                </p>
+                {myForActive.length === 0 ? (
+                  <p className="text-sm text-grey-600">📭 Nothing submitted yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {myForActive.map((r, i) => (
+                      <MyResponseRow key={r.id} index={i} text={r.text} responseId={r.id} />
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </motion.div>
         </AnimatePresence>
 
-        <p className="text-xs text-grey-600 text-center mt-6">
+        <p className="text-xs md:text-sm text-grey-600 text-center mt-8 md:mt-12">
           📊 {totalSubmittedFully} of {state.participants.length} have answered every prompt
         </p>
       </div>
@@ -210,15 +215,15 @@ function SubmitForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-3 md:space-y-4">
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value.slice(0, MAX_LENGTH))}
         placeholder="Type a response…"
-        rows={4}
-        className="w-full rounded-[4px] border border-border px-[14px] py-3 text-base bg-white focus:outline-none focus:border-foreground resize-none"
+        rows={5}
+        className="w-full rounded-[4px] border border-border px-[14px] py-3 text-base md:text-[15px] bg-white focus:outline-none focus:border-foreground resize-none md:min-h-[160px]"
       />
-      <div className="flex items-center justify-between text-xs text-grey-700">
+      <div className="flex items-center justify-between text-xs md:text-sm text-grey-700">
         <span>{MAX_LENGTH - text.length} chars remaining</span>
         <span>
           {remaining} of {MAX_PER_QUESTION} left
@@ -227,7 +232,7 @@ function SubmitForm({
       <button
         type="submit"
         disabled={!text.trim() || submitting}
-        className="w-full h-[44px] rounded-[4px] bg-deep-blue-800 text-white text-sm font-medium hover:bg-deep-blue-600 disabled:opacity-40"
+        className="w-full h-[44px] md:h-[48px] rounded-[4px] bg-deep-blue-800 text-white text-sm md:text-base font-medium hover:bg-deep-blue-600 disabled:opacity-40"
       >
         {submitting ? "⏳ Submitting…" : "📤 Submit →"}
       </button>
