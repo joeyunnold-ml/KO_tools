@@ -18,13 +18,21 @@ export function buildMarkdown(state: LaneState): string {
   lines.push(`- Participants: ${participants.length} (${participants.map((p) => `${p.name} (${p.team === "monstarlab" ? "ML" : "Avis"})`).join(", ")})`);
   lines.push(`- Capture phase: ${state.session.capture_enabled ? "enabled" : "disabled"}`);
   lines.push(`- Blind sort: ${state.session.blind_sort_enabled ? "enabled" : "disabled"}`);
+  lines.push(`- Framing: ${state.session.framing}`);
+  lines.push("  - **Lane A — " + state.session.lane_a_label + "**: " + state.session.lane_a_description);
+  lines.push("  - **Lane B — " + state.session.lane_b_label + "**: " + state.session.lane_b_description);
+  lines.push("  - **Lane C — " + state.session.lane_c_label + "**: " + state.session.lane_c_description);
   lines.push("");
 
-  // Final classification by lane
+  // Final classification by lane (using session's framing labels)
   lines.push("## Final classification");
   lines.push("");
   const lanes: Lane[] = ["fix", "test", "build"];
-  const laneLabels: Record<Lane, string> = { fix: "🔧 Fix It", test: "🧪 Test It", build: "🏗️ Build It" };
+  const laneLabels: Record<Lane, string> = {
+    fix: state.session.lane_a_label,
+    test: state.session.lane_b_label,
+    build: state.session.lane_c_label,
+  };
   for (const lane of lanes) {
     const inLane = items.filter((i) => i.final_lane === lane);
     lines.push(`### ${laneLabels[lane]}`);

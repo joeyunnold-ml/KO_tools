@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { LaneState } from "@/lib/useLanes";
 import type { Lane, LaneItemRow } from "@/lib/types";
-import { LANES, laneColor } from "@/lib/palette";
+import { LANES, getLaneInfo, laneColor } from "@/lib/palette";
 import { classify } from "@/lib/actions";
 import { useIsTabletPlus } from "@/lib/useMediaQuery";
 
@@ -30,6 +30,7 @@ export default function ParticipantSort({
   }, [state.classifications, participantId]);
 
   const isTabletPlus = useIsTabletPlus();
+  const laneInfo = useMemo(() => getLaneInfo(state.session), [state.session]);
 
   // Active index — first unsorted item by default
   const firstUnsortedIdx = items.findIndex((it) => !myClassifications.has(it.id));
@@ -93,6 +94,7 @@ export default function ParticipantSort({
       myClassifications={myClassifications}
       activeIdx={activeIdx}
       onPick={setActiveIdx}
+      laneInfo={laneInfo}
     />
   ) : null;
 
@@ -147,7 +149,7 @@ export default function ParticipantSort({
                   <p className="text-[11px] uppercase tracking-wider text-grey-600 mb-1">
                     Your current pick
                   </p>
-                  <CurrentLaneChip lane={myClassifications.get(activeItem.id)!} />
+                  <CurrentLaneChip lane={myClassifications.get(activeItem.id)!} label={laneInfo[myClassifications.get(activeItem.id)!].label} />
                 </div>
               ) : null}
             </motion.div>
@@ -156,23 +158,29 @@ export default function ParticipantSort({
           {/* Lane buttons */}
           <div className="grid grid-cols-3 gap-2 mb-3">
             {LANES.map((lane) => {
-              const lc = laneColor(lane);
+              const info = laneInfo[lane];
               const isSelected = myClassifications.get(activeItem.id) === lane;
               return (
                 <button
                   key={lane}
                   onClick={() => pickLane(lane)}
-                  className={`h-[80px] md:h-[96px] rounded-[8px] border-2 text-sm font-semibold transition-all active:scale-95 ${
+                  className={`min-h-[96px] md:min-h-[120px] rounded-[8px] border-2 text-sm font-semibold transition-all active:scale-95 p-2 flex flex-col items-center justify-center ${
                     isSelected ? "ring-2 ring-foreground ring-offset-2" : ""
                   }`}
                   style={{
-                    backgroundColor: lc.solid,
-                    color: lc.solidFg,
-                    borderColor: lc.solid,
+                    backgroundColor: info.solid,
+                    color: info.solidFg,
+                    borderColor: info.solid,
                   }}
                 >
-                  <div className="text-2xl">{lc.emoji}</div>
-                  <div className="mt-0.5 text-[12px] uppercase tracking-wider">{lc.label}</div>
+                  <div className="text-[14px] md:text-[15px] font-bold uppercase tracking-wider leading-tight text-center">
+                    {info.label || `Lane ${lane === "fix" ? "A" : lane === "test" ? "B" : "C"}`}
+                  </div>
+                  {info.description ? (
+                    <div className="mt-1.5 text-[10px] md:text-[11px] font-normal leading-tight opacity-90 text-center line-clamp-3">
+                      {info.description}
+                    </div>
+                  ) : null}
                 </button>
               );
             })}
@@ -212,14 +220,14 @@ export default function ParticipantSort({
   );
 }
 
-function CurrentLaneChip({ lane }: { lane: Lane }) {
+function CurrentLaneChip({ lane, label }: { lane: Lane; label: string }) {
   const lc = laneColor(lane);
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[12px] font-semibold"
       style={{ backgroundColor: lc.solid, color: lc.solidFg }}
     >
-      {lc.emoji} {lc.label}
+      {label}
     </span>
   );
 }
@@ -229,11 +237,13 @@ function SortSidebar({
   myClassifications,
   activeIdx,
   onPick,
+  laneInfo,
 }: {
   items: LaneItemRow[];
   myClassifications: Map<string, Lane>;
   activeIdx: number;
   onPick: (i: number) => void;
+  laneInfo: ReturnType<typeof getLaneInfo>;
 }) {
   // Group items by lane
   const byLane: Record<Lane, Array<{ item: LaneItemRow; idx: number }>> = {
@@ -255,15 +265,16 @@ function SortSidebar({
       </p>
       <Section title={`📋 Unsorted (${unsorted.length})`} items={unsorted} activeIdx={activeIdx} onPick={onPick} />
       {LANES.map((lane) => {
-        const lc = laneColor(lane);
+        const info = laneInfo[lane];
         return (
           <SectionLane
             key={lane}
             lane={lane}
+            label={info.label}
             items={byLane[lane]}
             activeIdx={activeIdx}
             onPick={onPick}
-            color={lc}
+            color={info}
           />
         );
       })}
@@ -306,12 +317,14 @@ function Section({
 
 function SectionLane({
   lane,
+  label,
   items,
   activeIdx,
   onPick,
   color,
 }: {
   lane: Lane;
+  label: string;
   items: Array<{ item: LaneItemRow; idx: number }>;
   activeIdx: number;
   onPick: (i: number) => void;
@@ -321,8 +334,7 @@ function SectionLane({
   return (
     <section className="mb-4">
       <p className="text-[11px] font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: color.text }}>
-        <span>{color.emoji}</span>
-        <span>{color.label} ({items.length})</span>
+        <span>{label} ({items.length})</span>
       </p>
       <div className="space-y-1">
         {items.map(({ item, idx }) => (

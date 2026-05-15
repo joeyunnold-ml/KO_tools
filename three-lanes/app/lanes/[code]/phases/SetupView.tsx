@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
 import type { LaneState } from "@/lib/useLanes";
-import type { LaneItemRow } from "@/lib/types";
+import type { Framing, LaneItemRow, LaneSessionRow } from "@/lib/types";
 import {
   createItem,
   deleteItem,
   setConfig,
+  setFraming,
   updateItem,
 } from "@/lib/actions";
-import { teamColor } from "@/lib/palette";
+import { FRAMING_PRESETS, getFramingPreset, laneColor, teamColor } from "@/lib/palette";
 
 export default function SetupView({
   state,
@@ -44,6 +45,10 @@ export default function SetupView({
         <p className="text-[14px] text-grey-700 mb-6">
           Pre-load items, configure the flow, then open the session for participants.
         </p>
+
+        <FramingSection session={state.session} token={token} />
+
+        <hr className="my-8 border-grey-300" />
 
         <ItemList
           sessionId={state.session.id}
@@ -298,6 +303,226 @@ function ItemRow({ item, index }: { item: LaneItemRow; index: number }) {
         ) : null}
       </div>
     </motion.div>
+  );
+}
+
+function FramingSection({
+  session,
+  token,
+}: {
+  session: LaneSessionRow;
+  token: string;
+}) {
+  const [framing, setFramingState] = useState<Framing>(session.framing);
+  const [labels, setLabels] = useState({
+    a: session.lane_a_label,
+    aDesc: session.lane_a_description,
+    b: session.lane_b_label,
+    bDesc: session.lane_b_description,
+    c: session.lane_c_label,
+    cDesc: session.lane_c_description,
+  });
+
+  // Apply a preset (writes to DB immediately).
+  async function selectPreset(next: Framing) {
+    setFramingState(next);
+    if (next === "custom") {
+      // For custom, write framing but keep existing labels (or clear if all empty)
+      const allEmpty = !labels.a && !labels.b && !labels.c;
+      const seed = allEmpty
+        ? {
+            a: "",
+            aDesc: "",
+            b: "",
+            bDesc: "",
+            c: "",
+            cDesc: "",
+          }
+        : labels;
+      setLabels(seed);
+      await setFraming({
+        sessionId: session.id,
+        facilitatorToken: token,
+        framing: "custom",
+        laneALabel: seed.a,
+        laneADescription: seed.aDesc,
+        laneBLabel: seed.b,
+        laneBDescription: seed.bDesc,
+        laneCLabel: seed.c,
+        laneCDescription: seed.cDesc,
+      });
+      return;
+    }
+    const preset = getFramingPreset(next);
+    const seed = {
+      a: preset.lanes.fix.label,
+      aDesc: preset.lanes.fix.description,
+      b: preset.lanes.test.label,
+      bDesc: preset.lanes.test.description,
+      c: preset.lanes.build.label,
+      cDesc: preset.lanes.build.description,
+    };
+    setLabels(seed);
+    await setFraming({
+      sessionId: session.id,
+      facilitatorToken: token,
+      framing: next,
+      laneALabel: seed.a,
+      laneADescription: seed.aDesc,
+      laneBLabel: seed.b,
+      laneBDescription: seed.bDesc,
+      laneCLabel: seed.c,
+      laneCDescription: seed.cDesc,
+    });
+  }
+
+  // Sync local state if session changes via Realtime
+  useEffect(() => {
+    setFramingState(session.framing);
+    setLabels({
+      a: session.lane_a_label,
+      aDesc: session.lane_a_description,
+      b: session.lane_b_label,
+      bDesc: session.lane_b_description,
+      c: session.lane_c_label,
+      cDesc: session.lane_c_description,
+    });
+  }, [
+    session.framing,
+    session.lane_a_label,
+    session.lane_a_description,
+    session.lane_b_label,
+    session.lane_b_description,
+    session.lane_c_label,
+    session.lane_c_description,
+  ]);
+
+  async function saveCustomField(field: keyof typeof labels, value: string) {
+    const next = { ...labels, [field]: value };
+    setLabels(next);
+    await setFraming({
+      sessionId: session.id,
+      facilitatorToken: token,
+      framing: "custom",
+      laneALabel: next.a,
+      laneADescription: next.aDesc,
+      laneBLabel: next.b,
+      laneBDescription: next.bDesc,
+      laneCLabel: next.c,
+      laneCDescription: next.cDesc,
+    });
+  }
+
+  return (
+    <section className="mb-6">
+      <p className="text-[13px] font-medium uppercase tracking-[2px] text-grey-700 mb-3">
+        🎚️ Framing
+      </p>
+      <div className="rounded-[8px] border border-border bg-grey-100 p-1 inline-flex flex-wrap gap-1 mb-4">
+        {FRAMING_PRESETS.map((p) => {
+          const active = framing === p.framing;
+          return (
+            <button
+              key={p.framing}
+              onClick={() => selectPreset(p.framing)}
+              className={`px-3 py-1.5 text-[13px] font-medium rounded-[4px] transition-colors ${
+                active ? "bg-white text-foreground shadow-sm" : "text-grey-700 hover:text-foreground"
+              }`}
+            >
+              {p.name}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="text-[13px] text-grey-700 mb-3">{getFramingPreset(framing).description}</p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <LaneCard
+          laneId="fix"
+          label={labels.a}
+          description={labels.aDesc}
+          editable={framing === "custom"}
+          onLabel={(v) => saveCustomField("a", v)}
+          onDescription={(v) => saveCustomField("aDesc", v)}
+        />
+        <LaneCard
+          laneId="test"
+          label={labels.b}
+          description={labels.bDesc}
+          editable={framing === "custom"}
+          onLabel={(v) => saveCustomField("b", v)}
+          onDescription={(v) => saveCustomField("bDesc", v)}
+        />
+        <LaneCard
+          laneId="build"
+          label={labels.c}
+          description={labels.cDesc}
+          editable={framing === "custom"}
+          onLabel={(v) => saveCustomField("c", v)}
+          onDescription={(v) => saveCustomField("cDesc", v)}
+        />
+      </div>
+    </section>
+  );
+}
+
+function LaneCard({
+  laneId,
+  label,
+  description,
+  editable,
+  onLabel,
+  onDescription,
+}: {
+  laneId: "fix" | "test" | "build";
+  label: string;
+  description: string;
+  editable: boolean;
+  onLabel: (v: string) => void;
+  onDescription: (v: string) => void;
+}) {
+  const lc = laneColor(laneId);
+  const positionLetter = laneId === "fix" ? "A" : laneId === "test" ? "B" : "C";
+  return (
+    <div
+      className="rounded-[8px] border-2 p-3"
+      style={{ backgroundColor: lc.bg, borderColor: lc.border }}
+    >
+      <p className="text-[11px] font-medium uppercase tracking-[2px] mb-1 flex items-center gap-1.5" style={{ color: lc.text }}>
+        <span className="inline-block w-5 h-5 rounded-full text-center text-[10px] leading-5 font-bold" style={{ backgroundColor: lc.solid, color: lc.solidFg }}>
+          {positionLetter}
+        </span>
+        Lane {positionLetter}
+      </p>
+      {editable ? (
+        <>
+          <input
+            value={label}
+            onChange={(e) => onLabel(e.target.value.slice(0, 30))}
+            placeholder="Label (max 30)"
+            className="w-full mb-2 rounded-[4px] border border-border px-2 py-1.5 text-[14px] font-semibold bg-white focus:outline-none focus:border-foreground"
+            style={{ color: lc.text }}
+          />
+          <textarea
+            value={description}
+            onChange={(e) => onDescription(e.target.value.slice(0, 150))}
+            placeholder="Description shown to participants (max 150)"
+            rows={3}
+            className="w-full rounded-[4px] border border-border px-2 py-1.5 text-[12px] bg-white focus:outline-none focus:border-foreground resize-none"
+          />
+        </>
+      ) : (
+        <>
+          <p className="text-[15px] font-semibold mb-1" style={{ color: lc.text }}>
+            {label || "—"}
+          </p>
+          <p className="text-[12px] leading-snug" style={{ color: lc.text, opacity: 0.85 }}>
+            {description || "—"}
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 

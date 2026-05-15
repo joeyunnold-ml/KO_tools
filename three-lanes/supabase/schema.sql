@@ -13,6 +13,17 @@ create table if not exists lane_sessions (
   created_at timestamptz not null default now()
 );
 
+-- Framing: lets facilitator choose between 'product' / 'operations' / 'custom'
+-- labels for the three lanes. Internal identifiers stay 'fix'/'test'/'build'
+-- (in lane_classifications.lane) — only display labels + descriptions change.
+alter table lane_sessions add column if not exists framing            text not null default 'product';
+alter table lane_sessions add column if not exists lane_a_label       text not null default 'Fix It';
+alter table lane_sessions add column if not exists lane_a_description text not null default 'Known defects or UX issues with a clear right answer. No hypothesis needed, just fix it.';
+alter table lane_sessions add column if not exists lane_b_label       text not null default 'Test It';
+alter table lane_sessions add column if not exists lane_b_description text not null default 'Genuine hypotheses where the outcome is uncertain. Needs an experiment to decide.';
+alter table lane_sessions add column if not exists lane_c_label       text not null default 'Build It';
+alter table lane_sessions add column if not exists lane_c_description text not null default 'New features or structural changes that need product planning and development investment.';
+
 create table if not exists lane_participants (
   id uuid primary key default gen_random_uuid(),
   session_id uuid references lane_sessions(id) on delete cascade not null,

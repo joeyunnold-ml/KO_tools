@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { LaneState } from "@/lib/useLanes";
 import type { Lane, LaneItemRow } from "@/lib/types";
-import { LANES, laneColor, teamColor } from "@/lib/palette";
+import { LANES, getLaneInfo, laneColor, teamColor } from "@/lib/palette";
 import { setFinalLane } from "@/lib/actions";
 import { downloadMarkdown } from "@/lib/exportMarkdown";
 
@@ -22,6 +22,7 @@ export default function ResultsView({
   const participants = state.participants.filter((p) => !p.is_facilitator);
   const participantsById = new Map(participants.map((p) => [p.id, p]));
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const laneInfo = useMemo(() => getLaneInfo(state.session), [state.session]);
 
   // Contested items the facilitator hasn't placed yet, ranked by AI order
   const contestedQueue = useMemo(() => {
@@ -103,19 +104,19 @@ export default function ResultsView({
             {analysis.consensus.map((c) => {
               const item = itemsById.get(c.item_id);
               if (!item) return null;
-              const lc = laneColor(c.lane);
+              const info = laneInfo[c.lane];
               return (
                 <div
                   key={c.item_id}
                   className="rounded-[6px] border-2 px-3 py-2 max-w-xs"
-                  style={{ backgroundColor: lc.bg, borderColor: lc.border }}
+                  style={{ backgroundColor: info.bg, borderColor: info.border }}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span
                       className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold"
-                      style={{ backgroundColor: lc.solid, color: lc.solidFg }}
+                      style={{ backgroundColor: info.solid, color: info.solidFg }}
                     >
-                      {lc.emoji} {lc.label}
+                      {info.label}
                     </span>
                     <span className="text-[10px] text-grey-700">{Math.round(c.agreement_pct)}%</span>
                   </div>
@@ -171,6 +172,7 @@ export default function ResultsView({
                     <VoteBar
                       key={lane}
                       lane={lane}
+                      label={laneInfo[lane].label}
                       distribution={current.contested.distribution}
                       itemId={current.item.id}
                       classifications={state.classifications}
@@ -190,19 +192,19 @@ export default function ResultsView({
 
                 <div className="flex flex-wrap gap-2">
                   {LANES.map((lane) => {
-                    const lc = laneColor(lane);
+                    const info = laneInfo[lane];
                     return (
                       <button
                         key={lane}
                         onClick={() => placeAndAdvance(lane)}
                         className="flex-1 min-w-[140px] h-[48px] rounded-[4px] text-sm font-medium border-2 hover:opacity-90 transition-opacity"
                         style={{
-                          backgroundColor: lc.solid,
-                          color: lc.solidFg,
-                          borderColor: lc.solid,
+                          backgroundColor: info.solid,
+                          color: info.solidFg,
+                          borderColor: info.solid,
                         }}
                       >
-                        {lc.emoji} Place in {lc.label}
+                        Place in {info.label}
                       </button>
                     );
                   })}
@@ -229,16 +231,16 @@ export default function ResultsView({
               </p>
               <div className="flex flex-wrap gap-2">
                 {resolved.map(({ item }) => {
-                  const lc = item.final_lane ? laneColor(item.final_lane) : null;
-                  return lc ? (
+                  const info = item.final_lane ? laneInfo[item.final_lane] : null;
+                  return info ? (
                     <button
                       key={item.id}
                       onClick={() => setFinalLane({ id: item.id, lane: null })}
                       className="rounded-[6px] border-2 px-3 py-1.5 text-xs hover:opacity-80"
-                      style={{ backgroundColor: lc.bg, borderColor: lc.border, color: lc.text }}
+                      style={{ backgroundColor: info.bg, borderColor: info.border, color: info.text }}
                       title="Click to unplace"
                     >
-                      <span className="font-semibold mr-1">{lc.emoji} {lc.label}</span>
+                      <span className="font-semibold mr-1">{info.label}</span>
                       {item.title}
                     </button>
                   ) : null;
@@ -254,12 +256,14 @@ export default function ResultsView({
 
 function VoteBar({
   lane,
+  label,
   distribution,
   itemId,
   classifications,
   participantsById,
 }: {
   lane: Lane;
+  label: string;
   distribution: { fix: number; test: number; build: number };
   itemId: string;
   classifications: LaneState["classifications"];
@@ -284,7 +288,7 @@ function VoteBar({
     <div className="rounded-[6px] border-2 p-3" style={{ backgroundColor: lc.bg, borderColor: lc.border }}>
       <div className="flex items-baseline justify-between mb-1.5">
         <span className="text-[13px] font-semibold" style={{ color: lc.text }}>
-          {lc.emoji} {lc.label}
+          {label}
         </span>
         <span className="text-[22px] font-bold tabular-nums" style={{ color: lc.text }}>
           {count}
@@ -318,6 +322,7 @@ function VoteBar({
 // Three columns + an unsorted bin. Facilitator drags items into lanes.
 // ---------------------------------------------------------------------------
 function DirectDiscussionView({ state }: { state: LaneState }) {
+  const laneInfo = useMemo(() => getLaneInfo(state.session), [state.session]);
   const items = state.items;
   const unsorted = items.filter((i) => !i.final_lane);
   const byLane: Record<Lane, typeof items> = {
@@ -354,16 +359,21 @@ function DirectDiscussionView({ state }: { state: LaneState }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {LANES.map((lane) => {
-          const lc = laneColor(lane);
+          const info = laneInfo[lane];
           return (
             <div
               key={lane}
               className="rounded-[8px] border-2 p-4 min-h-[200px]"
-              style={{ backgroundColor: lc.bg, borderColor: lc.border }}
+              style={{ backgroundColor: info.bg, borderColor: info.border }}
             >
-              <p className="text-[14px] font-semibold mb-3" style={{ color: lc.text }}>
-                {lc.emoji} {lc.label} ({byLane[lane].length})
+              <p className="text-[14px] font-semibold mb-1" style={{ color: info.text }}>
+                {info.label} ({byLane[lane].length})
               </p>
+              {info.description ? (
+                <p className="text-[11px] mb-3 opacity-80" style={{ color: info.text }}>
+                  {info.description}
+                </p>
+              ) : null}
               <div className="space-y-2">
                 {byLane[lane].map((item) => (
                   <button
@@ -399,15 +409,16 @@ function DirectDiscussionView({ state }: { state: LaneState }) {
               ) : null}
               <div className="flex gap-1.5">
                 {LANES.map((lane) => {
-                  const lc = laneColor(lane);
+                  const info = laneInfo[lane];
                   return (
                     <button
                       key={lane}
                       onClick={() => placeItem(item.id, lane)}
-                      className="flex-1 h-7 rounded-[4px] text-[11px] font-medium border-2 hover:opacity-90"
-                      style={{ backgroundColor: lc.solid, color: lc.solidFg, borderColor: lc.solid }}
+                      className="flex-1 h-7 rounded-[4px] text-[10px] font-semibold border-2 hover:opacity-90 px-1 truncate"
+                      style={{ backgroundColor: info.solid, color: info.solidFg, borderColor: info.solid }}
+                      title={info.label}
                     >
-                      {lc.emoji}
+                      {info.label.length > 8 ? info.label.slice(0, 8) + "…" : info.label}
                     </button>
                   );
                 })}

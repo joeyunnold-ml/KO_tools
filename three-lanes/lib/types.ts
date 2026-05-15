@@ -1,6 +1,7 @@
 export type Phase = "setup" | "lobby" | "capture" | "sort" | "analyze" | "results" | "complete";
 export type Lane = "fix" | "test" | "build";
 export type Team = "monstarlab" | "avis";
+export type Framing = "product" | "operations" | "custom";
 
 export interface LaneSessionRow {
   id: string;
@@ -11,6 +12,13 @@ export interface LaneSessionRow {
   analysis_result: AnalysisResult | null;
   facilitator_token: string;
   created_at: string;
+  framing: Framing;
+  lane_a_label: string;
+  lane_a_description: string;
+  lane_b_label: string;
+  lane_b_description: string;
+  lane_c_label: string;
+  lane_c_description: string;
 }
 
 export interface LaneParticipantRow {

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { motion } from "motion/react";
 import type { LaneState } from "@/lib/useLanes";
-import { LANES, laneColor, teamColor } from "@/lib/palette";
+import { LANES, getLaneInfo, laneColor, teamColor } from "@/lib/palette";
 
 export default function ParticipantResults({
   state,
@@ -19,6 +19,7 @@ export default function ParticipantResults({
   const participants = state.participants.filter((p) => !p.is_facilitator);
   const participantsById = new Map(participants.map((p) => [p.id, p]));
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const laneInfo = useMemo(() => getLaneInfo(state.session), [state.session]);
 
   if (!analysis) {
     // Direct discussion fallback — just show the board as a read-only view
@@ -33,17 +34,22 @@ export default function ParticipantResults({
           </h1>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {LANES.map((lane) => {
-              const lc = laneColor(lane);
+              const info = laneInfo[lane];
               const inLane = items.filter((i) => i.final_lane === lane);
               return (
                 <div
                   key={lane}
                   className="rounded-[8px] border-2 p-4"
-                  style={{ backgroundColor: lc.bg, borderColor: lc.border }}
+                  style={{ backgroundColor: info.bg, borderColor: info.border }}
                 >
-                  <p className="text-[14px] font-semibold mb-3" style={{ color: lc.text }}>
-                    {lc.emoji} {lc.label} ({inLane.length})
+                  <p className="text-[14px] font-semibold mb-1" style={{ color: info.text }}>
+                    {info.label} ({inLane.length})
                   </p>
+                  {info.description ? (
+                    <p className="text-[11px] mb-3 opacity-80" style={{ color: info.text }}>
+                      {info.description}
+                    </p>
+                  ) : null}
                   <ul className="space-y-1.5">
                     {inLane.map((i) => (
                       <li key={i.id} className="text-[13px] text-foreground rounded-[4px] bg-white border border-border px-2 py-1.5">
@@ -95,18 +101,19 @@ export default function ParticipantResults({
               {analysis.consensus.map((c) => {
                 const item = itemsById.get(c.item_id);
                 if (!item) return null;
-                const lc = laneColor(c.lane);
+                const info = laneInfo[c.lane];
                 return (
                   <div
                     key={c.item_id}
                     className="rounded-[6px] border-2 px-3 py-2 flex items-center gap-2"
-                    style={{ backgroundColor: lc.bg, borderColor: lc.border }}
+                    style={{ backgroundColor: info.bg, borderColor: info.border }}
                   >
                     <span
-                      className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0"
-                      style={{ backgroundColor: lc.solid, color: lc.solidFg }}
+                      className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 max-w-[120px] truncate"
+                      style={{ backgroundColor: info.solid, color: info.solidFg }}
+                      title={info.label}
                     >
-                      {lc.emoji}
+                      {info.label}
                     </span>
                     <span className="text-[13px] font-medium text-foreground">{item.title}</span>
                   </div>
@@ -137,17 +144,17 @@ export default function ParticipantResults({
                       <span
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
                         style={{
-                          backgroundColor: laneColor(item.final_lane).solid,
-                          color: laneColor(item.final_lane).solidFg,
+                          backgroundColor: laneInfo[item.final_lane].solid,
+                          color: laneInfo[item.final_lane].solidFg,
                         }}
                       >
-                        Placed: {laneColor(item.final_lane).emoji} {laneColor(item.final_lane).label}
+                        Placed: {laneInfo[item.final_lane].label}
                       </span>
                     </div>
                   ) : null}
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     {LANES.map((lane) => {
-                      const lc = laneColor(lane);
+                      const info = laneInfo[lane];
                       const count = c.distribution[lane];
                       const pct = totalVotes > 0 ? (count / totalVotes) * 100 : 0;
                       const inLane = state.classifications.filter(
@@ -164,20 +171,20 @@ export default function ParticipantResults({
                         <div
                           key={lane}
                           className="rounded-[4px] border p-2"
-                          style={{ backgroundColor: lc.bg, borderColor: lc.border }}
+                          style={{ backgroundColor: info.bg, borderColor: info.border }}
                         >
-                          <div className="flex items-baseline justify-between mb-1">
-                            <span className="text-[11px] font-semibold" style={{ color: lc.text }}>
-                              {lc.emoji} {lc.label}
+                          <div className="flex items-baseline justify-between mb-1 gap-1">
+                            <span className="text-[11px] font-semibold truncate" style={{ color: info.text }} title={info.label}>
+                              {info.label}
                             </span>
-                            <span className="text-[14px] font-bold tabular-nums" style={{ color: lc.text }}>
+                            <span className="text-[14px] font-bold tabular-nums flex-shrink-0" style={{ color: info.text }}>
                               {count}
                             </span>
                           </div>
                           <div className="h-1.5 rounded-full bg-white overflow-hidden">
                             <div
                               className="h-full"
-                              style={{ backgroundColor: lc.solid, width: `${pct}%` }}
+                              style={{ backgroundColor: info.solid, width: `${pct}%` }}
                             />
                           </div>
                           <div className="mt-1 flex gap-2 text-[10px] text-grey-800">

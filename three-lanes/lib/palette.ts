@@ -8,7 +8,7 @@
 // - TEAM_COLORS: distinguishes Monstarlab vs Avis participants in the
 //   vote-distribution bars on contested items.
 
-import type { Lane, Team } from "./types";
+import type { Framing, Lane, LaneSessionRow, Team } from "./types";
 
 export interface PillColor {
   bg: string;
@@ -86,6 +86,113 @@ export const LANES: Lane[] = ["fix", "test", "build"];
 
 export function laneColor(lane: Lane): LaneColor {
   return LANE_COLORS[lane];
+}
+
+// ---------------------------------------------------------------------------
+// Framing presets + label resolution
+// ---------------------------------------------------------------------------
+// The three lanes are stable internally ('fix'/'test'/'build') so historical
+// classifications and votes remain consistent. The DISPLAY label + description
+// for each lane come from the session row, populated from one of these presets
+// (or fully custom) when the facilitator sets up the session.
+
+export interface LanePreset {
+  framing: Framing;
+  name: string;
+  description: string; // shown on the framing radio's description line
+  lanes: Record<Lane, { label: string; description: string }>;
+}
+
+export const FRAMING_PRESETS: LanePreset[] = [
+  {
+    framing: "product",
+    name: "Product / Experience",
+    description: "Default. Sort UX issues, experiments, and feature work.",
+    lanes: {
+      fix: {
+        label: "Fix It",
+        description:
+          "Known defects or UX issues with a clear right answer. No hypothesis needed, just fix it.",
+      },
+      test: {
+        label: "Test It",
+        description:
+          "Genuine hypotheses where the outcome is uncertain. Needs an experiment to decide.",
+      },
+      build: {
+        label: "Build It",
+        description:
+          "New features or structural changes that need product planning and development investment.",
+      },
+    },
+  },
+  {
+    framing: "operations",
+    name: "Operations / Process",
+    description: "Sort process changes by effort and structural commitment.",
+    lanes: {
+      fix: {
+        label: "Just Do It",
+        description:
+          "A quick process change we can implement this week. Low risk, clear improvement.",
+      },
+      test: {
+        label: "Pilot It",
+        description:
+          "Try it for a sprint or two and evaluate. We think it'll help but want to see it in practice first.",
+      },
+      build: {
+        label: "Redesign It",
+        description:
+          "Requires structural change — new tooling, new roles, or organizational commitment. Needs a plan.",
+      },
+    },
+  },
+  {
+    framing: "custom",
+    name: "Custom",
+    description: "Define your own three categories.",
+    lanes: {
+      fix: { label: "", description: "" },
+      test: { label: "", description: "" },
+      build: { label: "", description: "" },
+    },
+  },
+];
+
+export function getFramingPreset(framing: Framing): LanePreset {
+  return FRAMING_PRESETS.find((p) => p.framing === framing) ?? FRAMING_PRESETS[0];
+}
+
+/** Lane info resolved against a session — color + dynamic label + description. */
+export interface LaneInfo extends LaneColor {
+  label: string;
+  description: string;
+}
+
+/** Returns an indexed lane info object for the session's current framing. */
+export function getLaneInfo(
+  session: LaneSessionRow | null,
+): Record<Lane, LaneInfo> {
+  const c = LANE_COLORS;
+  const defaults = FRAMING_PRESETS[0].lanes;
+  return {
+    fix: {
+      ...c.fix,
+      label: session?.lane_a_label ?? defaults.fix.label,
+      description: session?.lane_a_description ?? defaults.fix.description,
+    },
+    test: {
+      ...c.test,
+      label: session?.lane_b_label ?? defaults.test.label,
+      description: session?.lane_b_description ?? defaults.test.description,
+    },
+    build: {
+      ...c.build,
+      label: session?.lane_c_label ?? defaults.build.label,
+      description: session?.lane_c_description ?? defaults.build.description,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -80,11 +80,16 @@ export async function POST(
     return NextResponse.json({ error: "No classifications to analyze" }, { status: 400 });
   }
 
-  // Build prompt
+  // Build prompt with the session's framing-specific lane labels
+  const laneA = `${session.lane_a_label} (lane id: fix)`;
+  const laneB = `${session.lane_b_label} (lane id: test)`;
+  const laneC = `${session.lane_c_label} (lane id: build)`;
   const systemPrompt = `You are analyzing classification data from a workshop exercise. A group of participants independently sorted work items into three categories:
-- Fix It: Known defects or UX issues with a clear right answer. No hypothesis needed.
-- Test It: Genuine hypotheses where the outcome is uncertain. Needs an experiment.
-- Build It: New features or structural work that goes through product planning.
+- ${laneA}: ${session.lane_a_description}
+- ${laneB}: ${session.lane_b_description}
+- ${laneC}: ${session.lane_c_description}
+
+In the JSON output you produce, ALWAYS use the lane ids 'fix', 'test', 'build' (not the human-readable labels). The labels above are just so you understand what each lane means.
 
 Your job:
 1. Identify consensus items (>=70% agreement on one lane).

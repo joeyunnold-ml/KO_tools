@@ -1,7 +1,7 @@
 "use client";
 
 import { getSupabase } from "./supabase";
-import type { Lane, Phase, Team } from "./types";
+import type { Framing, Lane, Phase, Team } from "./types";
 
 // ---------------------------------------------------------------------------
 // Participants
@@ -45,6 +45,34 @@ export async function setConfig(opts: {
   const { error } = await sb
     .from("lane_sessions")
     .update(patch)
+    .eq("id", opts.sessionId)
+    .eq("facilitator_token", opts.facilitatorToken);
+  if (error) throw error;
+}
+
+export async function setFraming(opts: {
+  sessionId: string;
+  facilitatorToken: string;
+  framing: Framing;
+  laneALabel: string;
+  laneADescription: string;
+  laneBLabel: string;
+  laneBDescription: string;
+  laneCLabel: string;
+  laneCDescription: string;
+}) {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from("lane_sessions")
+    .update({
+      framing: opts.framing,
+      lane_a_label: opts.laneALabel.slice(0, 30),
+      lane_a_description: opts.laneADescription.slice(0, 150),
+      lane_b_label: opts.laneBLabel.slice(0, 30),
+      lane_b_description: opts.laneBDescription.slice(0, 150),
+      lane_c_label: opts.laneCLabel.slice(0, 30),
+      lane_c_description: opts.laneCDescription.slice(0, 150),
+    })
     .eq("id", opts.sessionId)
     .eq("facilitator_token", opts.facilitatorToken);
   if (error) throw error;
