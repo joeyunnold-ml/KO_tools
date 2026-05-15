@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   DndContext,
@@ -70,10 +70,35 @@ export default function ContributeView({
     ? columns.find((c) => c.id === focusedColumnId) ?? null
     : null;
 
+  // Optimistic moves: when a sticky is dropped, we update local placement
+  // immediately so the sticky stays in its dropped cell. Cleared once the
+  // real state.stickies row catches up via Realtime.
+  const [optimisticMoves, setOptimisticMoves] = useState<
+    Map<string, { columnId: string; rowId: string }>
+  >(new Map());
+
+  useEffect(() => {
+    if (optimisticMoves.size === 0) return;
+    let changed = false;
+    const next = new Map(optimisticMoves);
+    for (const [stickyId, target] of next) {
+      const real = state.stickies.find((s) => s.id === stickyId);
+      // Sticky deleted, or real state caught up — drop the override.
+      if (!real || (real.column_id === target.columnId && real.row_id === target.rowId)) {
+        next.delete(stickyId);
+        changed = true;
+      }
+    }
+    if (changed) setOptimisticMoves(next);
+  }, [state.stickies, optimisticMoves]);
+
   const stickiesByCell = useMemo(() => {
     const m = new Map<string, StickyRow[]>();
     for (const s of state.stickies) {
-      const k = `${s.column_id}__${s.row_id}`;
+      const override = optimisticMoves.get(s.id);
+      const colId = override?.columnId ?? s.column_id;
+      const rowId = override?.rowId ?? s.row_id;
+      const k = `${colId}__${rowId}`;
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push(s);
     }
@@ -84,7 +109,7 @@ export default function ContributeView({
       });
     }
     return m;
-  }, [state.stickies]);
+  }, [state.stickies, optimisticMoves]);
 
   const [expandedCell, setExpandedCell] = useState<string | null>(null);
   const [moving, setMoving] = useState<StickyRow | null>(null);
@@ -116,10 +141,25 @@ export default function ContributeView({
     const sticky = state.stickies.find((s) => s.id === stickyId);
     if (!sticky) return;
     if (sticky.column_id === columnId && sticky.row_id === rowId) return;
+
+    // Optimistic: place the sticky in its destination cell immediately so it
+    // doesn't snap back to origin while the server round-trips.
+    setOptimisticMoves((prev) => {
+      const next = new Map(prev);
+      next.set(stickyId, { columnId, rowId });
+      return next;
+    });
+
     try {
       await moveSticky({ id: stickyId, columnId, rowId });
     } catch (err) {
       console.error(err);
+      // Revert the optimistic placement on failure.
+      setOptimisticMoves((prev) => {
+        const next = new Map(prev);
+        next.delete(stickyId);
+        return next;
+      });
     }
   }
 
@@ -193,8 +233,8 @@ export default function ContributeView({
               gridTemplateColumns: `160px repeat(${columns.length}, minmax(220px, 1fr))`,
             }}
           >
-            {/* Header row */}
-            <div className="bg-white sticky top-0 z-10" />
+            {/* Header row — top-left corner sticks on both axes */}
+            <div className="bg-white sticky top-0 left-0 z-20" />
             {columns.map((c) => {
               const focused = focusedColumnId === c.id;
               const dimmed = focusedColumnId !== null && !focused;
@@ -334,7 +374,7 @@ function RowFragment({
   return (
     <>
       <div
-        className="px-3 py-3 border-r border-border flex items-center"
+        className="px-3 py-3 border-r border-border flex items-center sticky left-0 z-[5]"
         style={{ backgroundColor: color.bandBg }}
       >
         <span className="text-[14px] font-semibold" style={{ color: color.text }}>

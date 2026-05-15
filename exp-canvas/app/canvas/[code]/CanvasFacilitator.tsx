@@ -162,7 +162,12 @@ export default function CanvasFacilitator({ roomCode }: { roomCode: string }) {
   return (
     <main className="flex-1 flex flex-col">
       {phase === "lobby" ? (
-        <LobbyView state={state} onStart={startElicit} starting={busy} />
+        <LobbyView
+          state={state}
+          onStart={startElicit}
+          onSkipToStructure={startFromScratch}
+          starting={busy}
+        />
       ) : phase === "elicit" ? (
         <ElicitView
           state={state}

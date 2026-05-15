@@ -7,10 +7,12 @@ import { pillColorForParticipant } from "@/lib/palette";
 export default function LobbyView({
   state,
   onStart,
+  onSkipToStructure,
   starting,
 }: {
   state: CanvasState;
   onStart: () => void;
+  onSkipToStructure: () => void;
   starting: boolean;
 }) {
   if (!state.canvas) return null;
@@ -65,10 +67,18 @@ export default function LobbyView({
         </div>
       </div>
 
-      <div className="mt-12 flex justify-end items-center gap-6">
+      <div className="mt-12 flex justify-end items-center gap-3 flex-wrap">
         {!enoughJoined ? (
-          <p className="text-base text-grey-700">⏳ Waiting for at least 2 participants…</p>
+          <p className="text-base text-grey-700 mr-auto">⏳ Waiting for at least 2 participants…</p>
         ) : null}
+        <button
+          onClick={onSkipToStructure}
+          disabled={starting}
+          className="h-[52px] rounded-[4px] bg-white border border-grey-500 text-grey-800 px-6 text-base font-medium hover:bg-grey-100 disabled:opacity-40 transition-colors"
+          title="Skip the blind elicitation and go straight to a canvas seeded with default stages"
+        >
+          ⏭ Skip elicitation
+        </button>
         <button
           onClick={onStart}
           disabled={!enoughJoined || starting}
