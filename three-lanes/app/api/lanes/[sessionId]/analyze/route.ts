@@ -22,13 +22,83 @@ interface Body {
   facilitatorToken: string;
 }
 
+async function callLLM(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<{ text?: string; error?: string; status?: number }> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    const model = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-7";
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        temperature: 0.3,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Anthropic error", res.status, errText);
+      return { error: `Anthropic ${res.status}: ${errText.slice(0, 300)}`, status: 502 };
+    }
+    const data = await res.json();
+    const text = (data?.content?.[0]?.text as string | undefined) ?? "";
+    if (!text) return { error: "Empty LLM response from Anthropic", status: 502 };
+    return { text };
+  }
+
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+  if (openrouterKey) {
+    const model = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-4.6";
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openrouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/joeyunnold-ml/KO_tools",
+        "X-Title": "Three-Lane Framework",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.3,
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("OpenRouter error", res.status, errText);
+      return { error: `OpenRouter ${res.status}: ${errText.slice(0, 300)}`, status: 502 };
+    }
+    const data = await res.json();
+    const text = (data?.choices?.[0]?.message?.content as string | undefined) ?? "";
+    if (!text) return { error: "Empty LLM response from OpenRouter", status: 502 };
+    return { text };
+  }
+
+  return {
+    error: "No LLM credentials configured (set ANTHROPIC_API_KEY or OPENROUTER_API_KEY)",
+    status: 503,
+  };
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  if (!process.env.OPENROUTER_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENROUTER_API_KEY) {
     return NextResponse.json(
-      { error: "OPENROUTER_API_KEY not configured" },
+      { error: "No LLM credentials configured — set ANTHROPIC_API_KEY or OPENROUTER_API_KEY" },
       { status: 503 },
     );
   }
@@ -154,43 +224,16 @@ Use the exact item_id values provided in the user message.`;
   }
   const userPrompt = lines.join("\n");
 
-  const model = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-4.6";
   let llmText: string;
   try {
-    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/joeyunnold-ml/KO_tools",
-        "X-Title": "Three-Lane Framework",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.3,
-      }),
-    });
-
-    if (!aiRes.ok) {
-      const errText = await aiRes.text();
-      console.error("OpenRouter error", aiRes.status, errText);
-      return NextResponse.json(
-        { error: `OpenRouter ${aiRes.status}: ${errText.slice(0, 300)}` },
-        { status: 502 },
-      );
+    const result = await callLLM(systemPrompt, userPrompt);
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: result.status ?? 502 });
     }
-    const aiData = await aiRes.json();
-    llmText = aiData?.choices?.[0]?.message?.content ?? "";
-    if (!llmText) {
-      return NextResponse.json({ error: "Empty LLM response" }, { status: 502 });
-    }
+    llmText = result.text ?? "";
   } catch (e) {
     return NextResponse.json(
-      { error: `OpenRouter request failed: ${e instanceof Error ? e.message : "unknown"}` },
+      { error: `LLM request failed: ${e instanceof Error ? e.message : "unknown"}` },
       { status: 502 },
     );
   }
